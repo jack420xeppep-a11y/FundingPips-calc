@@ -1,6 +1,8 @@
-# CalcPro
+# FundingPips Calc
 
 React-интерфейс и независимый расчётный движок для синхронизированной позиции FundingPips / Bybit.
+
+Production: [farmcalc.duckdns.org](https://farmcalc.duckdns.org)
 
 ## Запуск
 
@@ -33,3 +35,11 @@ npm test
 - `DESIGN.md` — дизайн-система и QA-критерии.
 
 Приложение выполняет расчёты локально и не подключается к биржам или торговым аккаунтам.
+
+## CI/CD
+
+Каждый pull request и push в `main` проходит тесты, аудит зависимостей и production-сборку в GitHub Actions. Успешный push в `main` автоматически публикует содержимое `dist/` на production ограниченным SSH-ключом без root-доступа.
+
+- Workflow: `.github/workflows/deploy.yml`.
+- Серверный forced-command: `ops/fundingpips-calc-deploy`.
+- Rollback: revert проблемного коммита и push в `main`; workflow автоматически развернёт предыдущую сборку.

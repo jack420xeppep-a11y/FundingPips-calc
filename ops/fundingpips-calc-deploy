@@ -1,0 +1,24 @@
+#!/bin/sh
+
+set -eu
+
+command=${SSH_ORIGINAL_COMMAND:-}
+destination='/var/www/fundingpips-calc/'
+
+case "$command" in
+  rsync\ --server\ *" $destination")
+    ;;
+  *)
+    echo 'CalcPro deploy key: command denied.' >&2
+    exit 1
+    ;;
+esac
+
+case "$command" in
+  *--sender*|*'..'*)
+    echo 'CalcPro deploy key: read or traversal denied.' >&2
+    exit 1
+    ;;
+esac
+
+exec $command
