@@ -200,7 +200,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS predictions (
     id INTEGER PRIMARY KEY,
-    fingerprint TEXT NOT NULL,
+    fingerprint TEXT NOT NULL UNIQUE,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     entry_price REAL NOT NULL CHECK(entry_price > 0),
@@ -219,8 +219,7 @@ const SCHEMA = `
     combined_probability REAL NOT NULL,
     maturity REAL NOT NULL,
     outcome TEXT,
-    outcome_at INTEGER,
-    UNIQUE(fingerprint, created_at)
+    outcome_at INTEGER
   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS model_metrics (

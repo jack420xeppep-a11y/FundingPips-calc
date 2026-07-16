@@ -403,13 +403,25 @@ export function buildPhaseAwareRecommendation({
     reasons,
     candidates: {
       long: {
+        probabilities: candidates.long.probabilities,
         bybitTpProbability: round(candidates.long.bybitTpProbability, 8),
         fundingPipsTpProbability: round(candidates.long.fundingPipsTpProbability, 8),
+        marketBybitTpProbability: round(
+          candidates.long.marketForecast.probabilities.down,
+          8,
+        ),
+        walletBybitTpProbability: round(walletSignal.probabilityDown, 8),
         expectedValueUsdEquivalent: candidates.long.expectedValueUsdEquivalent,
       },
       short: {
+        probabilities: candidates.short.probabilities,
         bybitTpProbability: round(candidates.short.bybitTpProbability, 8),
         fundingPipsTpProbability: round(candidates.short.fundingPipsTpProbability, 8),
+        marketBybitTpProbability: round(
+          candidates.short.marketForecast.probabilities.up,
+          8,
+        ),
+        walletBybitTpProbability: round(walletSignal.probabilityUp, 8),
         expectedValueUsdEquivalent: candidates.short.expectedValueUsdEquivalent,
       },
     },
@@ -500,4 +512,3 @@ export function createRecommendationStabilizer({
     },
   };
 }
-
