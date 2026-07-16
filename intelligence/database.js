@@ -1161,6 +1161,60 @@ export function createIntelligenceDatabase({
       }));
     },
 
+    listActiveWalletSignals({ limit = 1_000 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+        throw new Error('Active wallet signal limit is invalid.');
+      }
+      const rows = database.prepare(`
+        SELECT
+          w.address,
+          w.status,
+          w.position_side,
+          w.position_size,
+          w.position_entry_price,
+          w.position_value,
+          w.position_unrealized_pnl,
+          w.position_updated_at,
+          s.episode_count,
+          s.overall_score,
+          s.long_quality,
+          s.short_quality
+        FROM wallets w
+        JOIN wallet_scores s ON s.address = w.address
+        WHERE w.status = 'ACTIVE_COHORT'
+          AND w.position_side IS NOT NULL
+          AND w.position_updated_at IS NOT NULL
+        ORDER BY s.overall_score DESC, w.position_value DESC
+        LIMIT ?
+      `).all(limit);
+      const membershipQuery = database.prepare(`
+        SELECT cohort, score
+        FROM cohort_memberships
+        WHERE address = ? AND ended_at IS NULL
+        ORDER BY cohort ASC
+      `);
+      return rows.map((row) => ({
+        address: row.address,
+        status: row.status,
+        positionSide: row.position_side,
+        positionSize: row.position_size,
+        positionEntryPrice: row.position_entry_price,
+        positionValue: row.position_value,
+        positionUnrealizedPnl: row.position_unrealized_pnl,
+        positionUpdatedAt: row.position_updated_at,
+        score: {
+          episodeCount: row.episode_count,
+          overallScore: row.overall_score,
+          longQuality: row.long_quality,
+          shortQuality: row.short_quality,
+        },
+        memberships: membershipQuery.all(row.address).map((membership) => ({
+          cohort: membership.cohort,
+          score: membership.score,
+        })),
+      }));
+    },
+
     recordPrediction(prediction) {
       const probabilities = [
         prediction?.probabilityUp,
