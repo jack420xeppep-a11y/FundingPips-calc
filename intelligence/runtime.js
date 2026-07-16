@@ -5,6 +5,7 @@ import {
   buildPhaseAwareRecommendation,
   createRecommendationStabilizer,
 } from './probability-engine.js';
+import { createMarketSentimentAggregator } from './sentiment.js';
 
 const HORIZON_MS = 4 * 60 * 60 * 1_000;
 const DEFAULT_JOBS = Object.freeze({
@@ -35,12 +36,14 @@ export function createGoldIntelligenceRuntime({
   broadcastIntervalMs = 0,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
+  marketSentimentAggregator = createMarketSentimentAggregator({ now }),
 } = {}) {
   if (
     !database?.getHealth ||
     !database?.listActiveWalletSignals ||
     !marketStore?.snapshot ||
-    !marketStore?.subscribe
+    !marketStore?.subscribe ||
+    !marketSentimentAggregator?.update
   ) {
     throw new Error('Gold intelligence runtime dependencies are incomplete.');
   }
@@ -145,6 +148,7 @@ export function createGoldIntelligenceRuntime({
     getPublicSnapshot(setup) {
       if (closed) throw new Error('Gold intelligence runtime is closed.');
       const snapshot = marketStore.snapshot();
+      const marketSentiment = marketSentimentAggregator.update(snapshot).sentiment;
       const wallets = database.listActiveWalletSignals();
       const modelMetrics = database.getModelMetrics();
       const decisionReferencePrice =
@@ -187,6 +191,9 @@ export function createGoldIntelligenceRuntime({
         reasons: result.reasons,
         candidates: result.candidates,
         economics: result.economics,
+        sentiment: {
+          market: marketSentiment,
+        },
         market: {
           symbol: 'xyz:GOLD',
           bybitSymbol: 'XAUUSD+',

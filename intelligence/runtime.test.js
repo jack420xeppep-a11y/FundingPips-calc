@@ -118,6 +118,9 @@ test('runtime returns only aggregate model state and records both shadow directi
   assert.equal(result.version, 1);
   assert.equal(result.market.symbol, 'xyz:GOLD');
   assert.equal(result.market.bybitSymbol, 'XAUUSD+');
+  assert.equal(result.sentiment.market.status, 'ready');
+  assert.equal(result.sentiment.market.direction, 'SHORT');
+  assert.ok(result.sentiment.market.score < 0);
   assert.equal(result.economics.executionEnabled, false);
   assert.equal(JSON.stringify(result).includes('address'), false);
   assert.equal(database.listPredictions().length, 2);

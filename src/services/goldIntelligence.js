@@ -73,6 +73,47 @@ const validCandidate = (candidate) => {
   ) <= 1e-6;
 };
 
+const validMarketSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  if (
+    !['ready', 'warming', 'stale'].includes(sentiment.status) ||
+    !['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) ||
+    (
+      sentiment.score !== null &&
+      (
+        !Number.isFinite(Number(sentiment.score)) ||
+        Number(sentiment.score) < -100 ||
+        Number(sentiment.score) > 100
+      )
+    ) ||
+    !Number.isFinite(Number(sentiment.strength)) ||
+    Number(sentiment.strength) < 0 ||
+    Number(sentiment.strength) > 100 ||
+    !Number.isFinite(Number(sentiment.generatedAt)) ||
+    !Number.isFinite(Number(sentiment.stableForMs)) ||
+    Number(sentiment.stableForMs) < 0 ||
+    !Array.isArray(sentiment.reasons) ||
+    sentiment.reasons.length > 8 ||
+    sentiment.reasons.some((reason) => typeof reason !== 'string' || reason.length > 240) ||
+    !sentiment.components ||
+    typeof sentiment.components !== 'object' ||
+    Array.isArray(sentiment.components)
+  ) {
+    return false;
+  }
+  return Object.values(sentiment.components).every((item) => (
+    item &&
+    Number.isFinite(Number(item.weight)) &&
+    Number(item.weight) >= 0 &&
+    Number(item.weight) <= 100 &&
+    Number.isFinite(Number(item.raw)) &&
+    Number(item.raw) >= -1 &&
+    Number(item.raw) <= 1 &&
+    Number.isFinite(Number(item.value)) &&
+    Math.abs(Number(item.value)) <= Number(item.weight)
+  ));
+};
+
 export function parseGoldIntelligenceSnapshot(payload) {
   let snapshot;
   try {
@@ -112,6 +153,7 @@ export function parseGoldIntelligenceSnapshot(payload) {
     snapshot.reasons.some((reason) => typeof reason !== 'string' || reason.length > 240) ||
     !validCandidate(snapshot.candidates?.long) ||
     !validCandidate(snapshot.candidates?.short) ||
+    !validMarketSentiment(snapshot.sentiment?.market) ||
     snapshot.economics?.includesFeesOrSpread !== false ||
     snapshot.economics?.executionEnabled !== false ||
     snapshot.market?.symbol !== 'xyz:GOLD' ||
@@ -152,6 +194,7 @@ export function parseGoldIntelligenceSnapshot(payload) {
     reasons: [...snapshot.reasons],
     candidates: snapshot.candidates,
     economics: snapshot.economics,
+    ...(snapshot.sentiment ? { sentiment: snapshot.sentiment } : {}),
     market: snapshot.market,
   };
 }

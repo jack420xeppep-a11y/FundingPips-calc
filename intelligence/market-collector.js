@@ -3,6 +3,9 @@ import { createDecisionPriceTracker } from './price-context.js';
 const MAX_MESSAGE_BYTES = 2_000_000;
 const MAX_TRADE_UPDATES = 5_000;
 const MAX_BOOK_LEVELS = 100;
+const BOOK_EMA_HALF_LIFE_MS = 30_000;
+const OI_HISTORY_MS = 20 * 60 * 1_000;
+const MAX_OI_SAMPLES = 2_000;
 const DEFAULT_MAX_TRADES = 20_000;
 const DEFAULT_MAX_PRICE_SAMPLES = 7_200;
 const DEFAULT_STALE_AFTER_MS = 15_000;
@@ -38,6 +41,10 @@ const round = (value, decimals = 8) => {
 
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, Number(value)));
+
+const emaAlpha = (elapsedMs, halfLifeMs) => (
+  1 - Math.exp((-Math.log(2) * Math.max(0, elapsedMs)) / halfLifeMs)
+);
 
 const parsePayload = (payload) => {
   if (typeof payload === 'string') {
@@ -343,9 +350,45 @@ export function createGoldMarketStore({
   let context = null;
   let bybit = null;
   let bookImbalance = 0;
+  let bookImbalanceEma = null;
+  let bookImbalanceUpdatedAt = null;
   let previousOpenInterest = null;
   let openInterestChangePct = 0;
+  const openInterestSamples = [];
   let lastCandle = null;
+
+  const updateBookImbalance = (nextValue, timestamp) => {
+    bookImbalance = clamp(nextValue, -1, 1);
+    if (bookImbalanceEma === null || bookImbalanceUpdatedAt === null) {
+      bookImbalanceEma = bookImbalance;
+    } else {
+      bookImbalanceEma += (
+        bookImbalance - bookImbalanceEma
+      ) * emaAlpha(timestamp - bookImbalanceUpdatedAt, BOOK_EMA_HALF_LIFE_MS);
+    }
+    bookImbalanceUpdatedAt = timestamp;
+  };
+
+  const appendOpenInterest = (value, timestamp) => {
+    openInterestSamples.push({ value: Number(value), timestamp });
+    const threshold = timestamp - OI_HISTORY_MS;
+    while (openInterestSamples[0]?.timestamp < threshold) openInterestSamples.shift();
+    if (openInterestSamples.length > MAX_OI_SAMPLES) {
+      openInterestSamples.splice(0, openInterestSamples.length - MAX_OI_SAMPLES);
+    }
+  };
+
+  const openInterestChangeFor = (currentTime, durationMs) => {
+    const current = openInterestSamples.at(-1);
+    const threshold = currentTime - durationMs;
+    let baseline = null;
+    for (const sample of openInterestSamples) {
+      if (sample.timestamp <= threshold) baseline = sample;
+      else break;
+    }
+    if (!current || !baseline || !isPositive(baseline.value)) return null;
+    return round(((current.value - baseline.value) / baseline.value) * 100, 6);
+  };
 
   const appendPrice = (price, timestamp) => {
     if (!isPositive(price) || !isPositive(timestamp)) return;
@@ -424,10 +467,16 @@ export function createGoldMarketStore({
         aggressiveFlow15m: rollingFlow(trades, generatedAt, 15 * 60 * 1_000),
         aggressiveFlow60m: rollingFlow(trades, generatedAt, 60 * 60 * 1_000),
         bookImbalance: round(bookImbalance, 6),
+        bookImbalanceEma: round(bookImbalanceEma ?? bookImbalance, 6),
         momentum5mBps: calculateMomentum(priceSamples, generatedAt, 5 * 60 * 1_000),
         momentum15mBps: calculateMomentum(priceSamples, generatedAt, 15 * 60 * 1_000),
         volatilityBps: calculateVolatility(priceSamples),
         openInterestChangePct: round(openInterestChangePct, 6),
+        openInterestChange5mPct: openInterestChangeFor(generatedAt, 5 * 60 * 1_000),
+        openInterestChange15mPct: openInterestChangeFor(
+          generatedAt,
+          15 * 60 * 1_000,
+        ),
       },
       candle: lastCandle,
       diagnostics: {
@@ -487,9 +536,9 @@ export function createGoldMarketStore({
           sourceTimestamp: event.timestamp,
         };
         const totalSize = event.bidSize + event.askSize;
-        bookImbalance = totalSize > 0
+        updateBookImbalance(totalSize > 0
           ? clamp((event.bidSize - event.askSize) / totalSize, -1, 1)
-          : 0;
+          : 0, receivedAt);
         hyperliquidLastAt = receivedAt;
         appendPrice((event.bid + event.ask) / 2, receivedAt);
         notify();
@@ -504,7 +553,7 @@ export function createGoldMarketStore({
           askSize: event.askDepth,
           sourceTimestamp: event.timestamp,
         };
-        bookImbalance = clamp(event.imbalance, -1, 1);
+        updateBookImbalance(event.imbalance, receivedAt);
         hyperliquidLastAt = receivedAt;
         appendPrice((event.bid + event.ask) / 2, receivedAt);
         notify();
@@ -517,6 +566,7 @@ export function createGoldMarketStore({
             ((event.openInterest - previousOpenInterest) / previousOpenInterest) * 100;
         }
         previousOpenInterest = event.openInterest;
+        appendOpenInterest(event.openInterest, receivedAt);
         context = event;
         hyperliquidLastAt = receivedAt;
         appendPrice(event.midPrice, receivedAt);

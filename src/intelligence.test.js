@@ -89,6 +89,21 @@ const snapshot = {
     bybitTimestamp: 1784194000000,
     stale: false,
   },
+  sentiment: {
+    market: {
+      status: 'ready',
+      direction: 'SHORT',
+      score: -66,
+      strength: 66,
+      generatedAt: 1784194000000,
+      stableForMs: 225000,
+      regime: 'BREAKOUT',
+      components: {
+        trendMomentum: { weight: 26, raw: -0.8, value: -20.8 },
+      },
+      reasons: ['trend and momentum supports SHORT'],
+    },
+  },
 };
 
 test('frontend validates the aggregate intelligence contract', () => {
@@ -96,6 +111,7 @@ test('frontend validates the aggregate intelligence contract', () => {
   assert.equal(parsed.recommendation.stableDirection, 'long');
   assert.equal(parsed.paths.down.probability, 0.64);
   assert.equal(parsed.cohortSize, 18);
+  assert.equal(parsed.sentiment.market.score, -66);
 
   assert.equal(parseGoldIntelligenceSnapshot({
     ...snapshot,
@@ -111,6 +127,15 @@ test('frontend validates the aggregate intelligence contract', () => {
   assert.equal(parseGoldIntelligenceSnapshot({
     ...snapshot,
     recommendation: { ...snapshot.recommendation, stableDirection: 'execute' },
+  }), null);
+  assert.equal(parseGoldIntelligenceSnapshot({
+    ...snapshot,
+    sentiment: {
+      market: {
+        ...snapshot.sentiment.market,
+        score: -166,
+      },
+    },
   }), null);
 });
 
