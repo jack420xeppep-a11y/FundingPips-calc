@@ -244,6 +244,8 @@ try {
       status: document.querySelector('.intelligence-status').innerText,
       probabilitySum: probabilities.reduce((sum, value) => sum + value, 0),
       recommendation: document.querySelector('.intelligence-recommendation strong').innerText,
+      pressureRows: document.querySelectorAll('.pressure-row').length,
+      whaleText: document.querySelector('.sentiment-brief').innerText,
       advancedHidden:
         getComputedStyle(document.querySelector('.intelligence-advanced')).display === 'none',
       noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
@@ -255,10 +257,7 @@ try {
     const locked = await evaluate(
       "document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
     );
-    const noEdge = await evaluate(
-      "document.querySelector('.intelligence-status')?.innerText.includes('NO EDGE')",
-    );
-    if (!locked && !noEdge) throw new Error('Copy did not lock HL Intelligence AUTO');
+    if (!locked) throw new Error('Copy did not lock HL Intelligence AUTO');
   });
   const lockButtonExists = await evaluate(
     "Boolean(document.querySelector('.intelligence-lock'))",
@@ -279,31 +278,9 @@ try {
       : document.querySelector('.intelligence-recommendation')
         .innerText.includes('MANUAL DIRECTION');
   })()`);
-  await retry(async () => {
-    const synchronized = await evaluate(`(() => {
-      const status = document.querySelector('.intelligence-status')?.innerText ?? '';
-      const recommendation =
-        document.querySelector('.intelligence-recommendation strong')?.innerText ?? '';
-      if (status.includes('NO EDGE')) return true;
-      const expected = recommendation.includes('FP SHORT')
-        ? 'short'
-        : recommendation.includes('FP LONG')
-          ? 'long'
-          : null;
-      return expected && document.querySelector('#fpDirection').value === expected;
-    })()`);
-    if (!synchronized) throw new Error('AUTO direction did not synchronize after unlock');
-  }, 100);
-  const intelligenceDirectionSynchronized = await evaluate(`(() => {
-    const recommendation =
-      document.querySelector('.intelligence-recommendation strong')?.innerText ?? '';
-    const expected = recommendation.includes('FP SHORT')
-      ? 'short'
-      : recommendation.includes('FP LONG')
-        ? 'long'
-        : document.querySelector('#fpDirection').value;
-    return document.querySelector('#fpDirection').value === expected;
-  })()`);
+  const intelligenceSyncing = await evaluate(
+    "document.querySelector('.intelligence-status')?.innerText.includes('SYNCING')",
+  );
 
   const mobileScreenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
@@ -433,8 +410,10 @@ try {
       intelligence.recommendation.includes('MANUAL DIRECTION')) &&
     intelligence.advancedHidden &&
     intelligence.noHorizontalOverflow &&
+    intelligence.pressureRows === 3 &&
+    intelligence.whaleText.includes('COMBINED') &&
     intelligenceUnlocked &&
-    intelligenceDirectionSynchronized &&
+    intelligenceSyncing &&
     euroLive > 0 &&
     poundLive > 0 &&
     quoteTransport.usedRelay &&
@@ -459,7 +438,7 @@ try {
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,
     intelligenceUnlocked,
-    intelligenceDirectionSynchronized,
+    intelligenceSyncing,
     quoteTransport,
     darkTheme,
     desktop,
