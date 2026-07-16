@@ -66,12 +66,22 @@ const validSnapshot = (snapshot) => (
   Number.isSafeInteger(snapshot.createdAt) &&
   Number.isSafeInteger(snapshot.expiresAt) &&
   snapshot.expiresAt > snapshot.createdAt &&
+  snapshot.expiresAt - snapshot.createdAt <= MAX_HORIZON_MS &&
   typeof snapshot.instrument === 'string' &&
   isPositive(snapshot.entryPrice) &&
+  snapshot.values &&
+  snapshot.values.instrument === snapshot.instrument &&
+  Number(snapshot.values.entryPrice) === Number(snapshot.entryPrice) &&
+  ['long', 'short'].includes(snapshot.values.fpDirection) &&
+  isPositive(snapshot.values.slPct) &&
+  ['p1', 'p2', 'funded'].includes(snapshot.values.stage) &&
+  isPositive(snapshot.values.rrRatio) &&
   snapshot.position?.status === 'ready' &&
   validLeg(snapshot.position.bybit) &&
   validLeg(snapshot.position.fundingPips) &&
   validDecision(snapshot.decision) &&
+  snapshot.position.bybit.direction === snapshot.decision.bybitDirection &&
+  snapshot.position.fundingPips.direction === snapshot.decision.fpDirection.toUpperCase() &&
   typeof snapshot.ticket === 'string' &&
   snapshot.ticket.length > 0 &&
   snapshot.ticket.length <= 10_000

@@ -51,6 +51,16 @@ HyperGold behavior:
 The Calm Sentiment architecture, compatibility contract, and rollback rules
 are defined in `docs/hypergold/CALM_SENTIMENT_V2.md`.
 
+Implementation status:
+
+- execution/decision/outcome prices separated;
+- bounded market and aggregate whale sentiment implemented;
+- durable 15-second decision state machine implemented;
+- complete versioned frozen trade snapshots implemented;
+- Calm Sentiment desktop/mobile UI implemented and Chrome-smoked;
+- additive schema v2, predeploy SQLite backup, integrity, disk, retention, and
+  aggregate observability gates implemented.
+
 ## Architecture boundary
 
 ```text

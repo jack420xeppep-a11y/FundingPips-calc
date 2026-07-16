@@ -682,6 +682,66 @@ export function createIntelligenceDatabase({
     );
   };
 
+  const applyTrackedPositionDelta = (address, deltaSize, trade) => {
+    const current = selectWallet.get(address);
+    if (
+      !['ACTIVE_COHORT', 'PROBATION'].includes(current?.status) ||
+      !isFiniteNumber(deltaSize) ||
+      deltaSize === 0 ||
+      (
+        Number.isSafeInteger(current.position_updated_at) &&
+        trade.timestamp <= current.position_updated_at
+      )
+    ) {
+      return;
+    }
+    const currentSignedSize = current.position_side === 'LONG'
+      ? Number(current.position_size ?? 0)
+      : current.position_side === 'SHORT'
+        ? -Number(current.position_size ?? 0)
+        : 0;
+    const nextSignedSize = currentSignedSize + Number(deltaSize);
+    const nextAbsoluteSize = Math.abs(nextSignedSize);
+    const currentSide = Math.sign(currentSignedSize);
+    const deltaSide = Math.sign(deltaSize);
+    const nextSide = Math.sign(nextSignedSize);
+    let entryPrice = Number(current.position_entry_price);
+    if (nextSide === 0) {
+      entryPrice = null;
+    } else if (currentSide === 0 || nextSide !== currentSide) {
+      entryPrice = Number(trade.price);
+    } else if (currentSide === deltaSide) {
+      entryPrice = (
+        (entryPrice * Math.abs(currentSignedSize)) +
+        (Number(trade.price) * Math.abs(deltaSize))
+      ) / nextAbsoluteSize;
+    }
+    const side = nextSide > 0 ? 'LONG' : nextSide < 0 ? 'SHORT' : null;
+    const positionValue = nextAbsoluteSize * Number(trade.price);
+    const unrealizedPnl = nextSide === 0
+      ? 0
+      : (Number(trade.price) - entryPrice) * nextAbsoluteSize * nextSide;
+    recordPositionStatement.run(
+      side,
+      nextSide === 0 ? null : nextAbsoluteSize,
+      entryPrice,
+      nextSide === 0 ? null : positionValue,
+      unrealizedPnl,
+      trade.timestamp,
+      Math.max(current.updated_at, trade.timestamp),
+      address,
+    );
+    insertPositionSample.run(
+      address,
+      trade.timestamp,
+      side ?? 'FLAT',
+      nextAbsoluteSize,
+      entryPrice,
+      nextSide === 0 ? 0 : positionValue,
+      unrealizedPnl,
+    );
+  };
+
   const deleteOlderThan = (table, column, cutoff) =>
     Number(database.prepare(`DELETE FROM ${table} WHERE ${column} < ?`).run(cutoff).changes);
 
@@ -739,6 +799,8 @@ export function createIntelligenceDatabase({
           touchedWallets.add(seller);
           applyCandidateTrade(buyer, 'buy', trade.side === 'B', trade);
           applyCandidateTrade(seller, 'sell', trade.side === 'A', trade);
+          applyTrackedPositionDelta(buyer, trade.size, trade);
+          applyTrackedPositionDelta(seller, -trade.size, trade);
         }
         return { insertedTrades, touchedWallets: touchedWallets.size };
       });

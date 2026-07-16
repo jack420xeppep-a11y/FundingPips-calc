@@ -94,10 +94,22 @@ test('runtime returns only aggregate model state and records both shadow directi
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });
   t.after(() => database.close());
   const recordPrediction = database.recordPrediction;
+  const listActiveWalletSignals = database.listActiveWalletSignals;
+  const listWalletPositionSamples = database.listWalletPositionSamples;
   let predictionWrites = 0;
+  let walletReads = 0;
+  let positionSampleReads = 0;
   database.recordPrediction = (prediction) => {
     predictionWrites += 1;
     return recordPrediction(prediction);
+  };
+  database.listActiveWalletSignals = (...args) => {
+    walletReads += 1;
+    return listActiveWalletSignals(...args);
+  };
+  database.listWalletPositionSamples = (...args) => {
+    positionSampleReads += 1;
+    return listWalletPositionSamples(...args);
   };
   const listeners = new Set();
   const marketStore = {
@@ -131,6 +143,12 @@ test('runtime returns only aggregate model state and records both shadow directi
   runtime.getPublicSnapshot(setup);
   assert.equal(database.listPredictions().length, 2);
   assert.equal(predictionWrites, 2);
+  assert.equal(walletReads, 1);
+  assert.equal(positionSampleReads, 1);
+  const health = runtime.getPublicHealth();
+  assert.equal(health.observability.rawEvaluations, 1);
+  assert.equal(health.observability.sentimentPublications, 1);
+  assert.equal(JSON.stringify(health.observability).includes('address'), false);
 
   let updates = 0;
   const unsubscribe = runtime.subscribe(() => {
@@ -164,6 +182,7 @@ test('runtime health is sanitized, bounded, and reports model maturity', (t) => 
   assert.equal(health.database.schemaVersion, 2);
   assert.equal(health.database.rows.wallets, 0);
   assert.equal(health.model.resolvedCount, 0);
+  assert.equal(health.observability.rawEvaluations, 0);
   assert.equal(JSON.stringify(health).includes(':memory:'), false);
   assert.equal(JSON.stringify(health).includes('seed'), false);
 });

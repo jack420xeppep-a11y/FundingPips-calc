@@ -18,6 +18,7 @@ test('service config is loopback-only and keeps conservative job cadence', () =>
   assert.equal(config.retentionIntervalMs, 24 * 60 * 60 * 1000);
   assert.equal(config.marketSampleIntervalMs, 60 * 1000);
   assert.equal(config.positionReconcileIntervalMs, 15 * 60 * 1000);
+  assert.equal(config.requalificationIntervalMs, 24 * 60 * 60 * 1000);
   assert.equal(config.broadcastIntervalMs, 1000);
   assert.equal(config.maxRequestsPerMinute, 600);
 
@@ -99,6 +100,7 @@ test('service starts and stops every isolated dependency exactly once', async ()
     quoteRelayClient: makeStartStop('quote'),
     observer: { runOnce: async () => ({ reviewed: 0 }) },
     positionReconciler: { runOnce: async () => ({ reviewed: 0 }) },
+    requalifier: { runOnce: async () => ({ reviewed: 0 }) },
     rotator: { runOnce: async () => ({ reviewed: 0 }) },
     runRetention: () => ({ deleted: {} }),
     logger: () => {},

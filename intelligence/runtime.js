@@ -12,6 +12,7 @@ const RAW_MODEL_INTERVAL_MS = 5_000;
 const DEFAULT_JOBS = Object.freeze({
   observer: { lastRunAt: null, status: 'idle' },
   positions: { lastRunAt: null, status: 'idle' },
+  requalification: { lastRunAt: null, status: 'idle' },
   cohorts: { lastRunAt: null, status: 'idle' },
   retention: { lastRunAt: null, status: 'idle' },
 });
@@ -55,6 +56,7 @@ export function createGoldIntelligenceRuntime({
   setTimer = setTimeout,
   clearTimer = clearTimeout,
   marketSentimentAggregator = createMarketSentimentAggregator({ now }),
+  walletDataIntervalMs = 15_000,
 } = {}) {
   if (
     !database?.getHealth ||
@@ -80,10 +82,38 @@ export function createGoldIntelligenceRuntime({
   ) {
     throw new Error('Broadcast scheduling configuration is invalid.');
   }
+  if (
+    !Number.isSafeInteger(walletDataIntervalMs) ||
+    walletDataIntervalMs < 1_000 ||
+    walletDataIntervalMs > 60_000
+  ) {
+    throw new Error('Wallet data cadence is invalid.');
+  }
 
   const listeners = new Set();
   const contexts = new Map();
   const shadowPredictionKeys = new Map();
+  let walletDataCache = null;
+  const observability = {
+    rawEvaluations: 0,
+    sentimentPublications: 0,
+    decisionPublications: 0,
+    stableTransitions: 0,
+    directionSwitches: 0,
+    cooldownBlocks: 0,
+    emergencyOverrides: 0,
+    rawTargetDistribution: {
+      under50: 0,
+      from50To60: 0,
+      from60To70: 0,
+      atLeast70: 0,
+    },
+    stableStateDistribution: {},
+    lastDecisionLagMs: null,
+    lastMaturity: 0,
+    lastWalletFreshnessMs: null,
+    lastStableDirection: null,
+  };
   let broadcastTimer;
   const notifyListeners = () => {
     broadcastTimer = undefined;
@@ -168,14 +198,34 @@ export function createGoldIntelligenceRuntime({
     }
   };
 
+  const getWalletData = (timestamp) => {
+    if (
+      walletDataCache &&
+      timestamp >= walletDataCache.at &&
+      timestamp - walletDataCache.at < walletDataIntervalMs
+    ) {
+      return walletDataCache;
+    }
+    walletDataCache = {
+      at: timestamp,
+      wallets: database.listActiveWalletSignals(),
+      positionSamples: database.listWalletPositionSamples({
+        from: Math.max(1, timestamp - HOUR_MS),
+        to: timestamp,
+      }),
+      modelMetrics: database.getModelMetrics(),
+    };
+    return walletDataCache;
+  };
+
   return {
     getPublicSnapshot(setup) {
       if (closed) throw new Error('Gold intelligence runtime is closed.');
       const snapshot = marketStore.snapshot();
       const marketSentimentUpdate = marketSentimentAggregator.update(snapshot);
       const marketSentiment = marketSentimentUpdate.sentiment;
-      const wallets = database.listActiveWalletSignals();
-      const modelMetrics = database.getModelMetrics();
+      const walletData = getWalletData(snapshot.generatedAt);
+      const { wallets, modelMetrics, positionSamples } = walletData;
       const strategyKey = buildStrategyContextKey(setup);
       const context = getContext(strategyKey);
       const decisionReferencePrice =
@@ -197,12 +247,22 @@ export function createGoldIntelligenceRuntime({
         });
         context.rawAt = snapshot.generatedAt;
         context.rawMarketStatus = snapshot.status;
+        observability.rawEvaluations += 1;
       }
       const result = context.rawResult;
-      const positionSamples = database.listWalletPositionSamples({
-        from: Math.max(1, snapshot.generatedAt - HOUR_MS),
-        to: snapshot.generatedAt,
-      });
+      if (modelDue) {
+        const target = Number(
+          result.candidates?.[result.recommendation.fpDirection]?.bybitTpProbability,
+        );
+        const bucket = target < 0.5
+          ? 'under50'
+          : target < 0.6
+            ? 'from50To60'
+            : target < 0.7
+              ? 'from60To70'
+              : 'atLeast70';
+        observability.rawTargetDistribution[bucket] += 1;
+      }
       const whaleSentiment = buildWhaleSentiment({
         wallets,
         positionSamples,
@@ -245,6 +305,7 @@ export function createGoldIntelligenceRuntime({
         marketSentiment.score !== null &&
         combinedSentiment.score !== null
       ) {
+        observability.sentimentPublications += 1;
         database.recordSentimentSnapshot({
           timestamp: marketSentiment.generatedAt,
           marketScore: marketSentiment.score,
@@ -294,6 +355,34 @@ export function createGoldIntelligenceRuntime({
         ),
       });
       const decision = decisionUpdate.decision;
+      observability.lastMaturity = result.maturity;
+      observability.lastWalletFreshnessMs = whaleSentiment.freshnessMs;
+      observability.lastDecisionLagMs = Math.max(0, now() - decision.generatedAt);
+      if (
+        decision.state.startsWith('COOLDOWN_') &&
+        decision.fpDirection &&
+        result.recommendation.fpDirection !== decision.fpDirection
+      ) {
+        observability.cooldownBlocks += 1;
+      }
+      if (decisionUpdate.published) {
+        observability.decisionPublications += 1;
+        observability.stableStateDistribution[decision.state] =
+          (observability.stableStateDistribution[decision.state] ?? 0) + 1;
+        if (
+          decision.autoEligible &&
+          decision.fpDirection !== observability.lastStableDirection
+        ) {
+          observability.stableTransitions += 1;
+          if (observability.lastStableDirection !== null) {
+            observability.directionSwitches += 1;
+            if (decision.transitionReason === 'EMERGENCY') {
+              observability.emergencyOverrides += 1;
+            }
+          }
+          observability.lastStableDirection = decision.fpDirection;
+        }
+      }
       if (
         decisionUpdate.published &&
         decision.autoEligible &&
@@ -408,9 +497,26 @@ export function createGoldIntelligenceRuntime({
           hitRate: model.hitRate,
           calibrationBuckets: model.calibration.length,
         },
+        observability: {
+          rawEvaluations: observability.rawEvaluations,
+          sentimentPublications: observability.sentimentPublications,
+          decisionPublications: observability.decisionPublications,
+          stableTransitions: observability.stableTransitions,
+          directionSwitches: observability.directionSwitches,
+          cooldownBlocks: observability.cooldownBlocks,
+          emergencyOverrides: observability.emergencyOverrides,
+          rawTargetDistribution: { ...observability.rawTargetDistribution },
+          stableStateDistribution: { ...observability.stableStateDistribution },
+          lastDecisionLagMs: observability.lastDecisionLagMs,
+          lastMaturity: observability.lastMaturity,
+          lastWalletFreshnessMs: observability.lastWalletFreshnessMs,
+        },
         jobs: {
           observer: { ...jobState.observer },
           positions: { ...(jobState.positions ?? DEFAULT_JOBS.positions) },
+          requalification: {
+            ...(jobState.requalification ?? DEFAULT_JOBS.requalification),
+          },
           cohorts: { ...jobState.cohorts },
           retention: { ...jobState.retention },
         },
@@ -432,6 +538,7 @@ export function createGoldIntelligenceRuntime({
       listeners.clear();
       contexts.clear();
       shadowPredictionKeys.clear();
+      walletDataCache = null;
     },
   };
 }

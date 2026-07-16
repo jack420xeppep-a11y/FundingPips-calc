@@ -76,6 +76,15 @@ export function readServiceConfig(env = process.env) {
       minimum: 15 * 60 * 1_000,
       maximum: DAY_MS,
     }),
+    requalificationIntervalMs: integerFromEnv(
+      env,
+      'REQUALIFICATION_INTERVAL_MS',
+      DAY_MS,
+      {
+        minimum: 6 * HOUR_MS,
+        maximum: 7 * DAY_MS,
+      },
+    ),
     retentionIntervalMs: integerFromEnv(env, 'RETENTION_INTERVAL_MS', DAY_MS, {
       minimum: HOUR_MS,
       maximum: 7 * DAY_MS,
@@ -154,6 +163,7 @@ export function createGoldIntelligenceService({
   quoteRelayClient,
   observer,
   positionReconciler,
+  requalifier,
   rotator,
   runRetention,
   jobState: injectedJobState,
@@ -172,6 +182,7 @@ export function createGoldIntelligenceService({
     !quoteRelayClient?.stop ||
     !observer?.runOnce ||
     !positionReconciler?.runOnce ||
+    !requalifier?.runOnce ||
     !rotator?.runOnce ||
     typeof runRetention !== 'function'
   ) {
@@ -181,10 +192,11 @@ export function createGoldIntelligenceService({
   const jobState = injectedJobState ?? {
     observer: { status: 'idle', lastRunAt: null, lastResult: null },
     positions: { status: 'idle', lastRunAt: null, lastResult: null },
+    requalification: { status: 'idle', lastRunAt: null, lastResult: null },
     cohorts: { status: 'idle', lastRunAt: null, lastResult: null },
     retention: { status: 'idle', lastRunAt: null, lastResult: null },
   };
-  for (const name of ['observer', 'positions', 'cohorts', 'retention']) {
+  for (const name of ['observer', 'positions', 'requalification', 'cohorts', 'retention']) {
     jobState[name] ??= { status: 'idle', lastRunAt: null, lastResult: null };
   }
   const jobs = {
@@ -199,6 +211,13 @@ export function createGoldIntelligenceService({
       name: 'positions',
       operation: () => positionReconciler.runOnce(),
       state: jobState.positions,
+      now,
+      logger,
+    }),
+    requalification: createManagedJob({
+      name: 'requalification',
+      operation: () => requalifier.runOnce(),
+      state: jobState.requalification,
       now,
       logger,
     }),
@@ -247,8 +266,10 @@ export function createGoldIntelligenceService({
         scheduleOnce(jobs.observer, 10_000);
         scheduleOnce(jobs.positions, 20_000);
         scheduleOnce(jobs.cohorts, 30_000);
+        scheduleOnce(jobs.requalification, 45_000);
         scheduleInterval(jobs.observer, config.observerIntervalMs);
         scheduleInterval(jobs.positions, config.positionReconcileIntervalMs);
+        scheduleInterval(jobs.requalification, config.requalificationIntervalMs);
         scheduleInterval(jobs.cohorts, config.cohortIntervalMs);
         scheduleInterval(jobs.retention, config.retentionIntervalMs);
       }

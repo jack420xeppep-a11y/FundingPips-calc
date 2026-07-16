@@ -120,6 +120,7 @@ export function createDecisionStateMachine() {
   let stableSince = null;
   let nextSwitchAllowedAt = 0;
   let currentState = 'WARMING';
+  let transitionReason = null;
   let lastPublishedDecision = null;
   let lockedDecision = null;
 
@@ -213,6 +214,7 @@ export function createDecisionStateMachine() {
       sentiment: input.sentiment ?? null,
       reasons: Array.isArray(input.reasons) ? input.reasons.slice(0, 8) : [],
       freshnessMs: 0,
+      transitionReason,
     };
   };
 
@@ -302,6 +304,7 @@ export function createDecisionStateMachine() {
           stableSince = input.timestamp;
           nextSwitchAllowedAt = input.timestamp + SWITCH_COOLDOWN_MS;
           currentState = stateFor(activeDirection, 'COOLDOWN');
+          transitionReason = 'CONFIRMED';
           candidateDirection = null;
           candidateSince = null;
         } else if (evidenceAge < MINIMUM_EVIDENCE_MS) {
@@ -312,6 +315,7 @@ export function createDecisionStateMachine() {
       } else {
         const opposite = oppositeDirection(activeDirection);
         const oppositeProbabilities = smoothed.get(opposite);
+        const oppositeRaw = probabilitiesFor(opposite, input.candidates?.[opposite]);
         const normalSwitchQualifies =
           recommended === opposite &&
           oppositeProbabilities.target - oppositeProbabilities.opposite >= 0.2 &&
@@ -319,8 +323,8 @@ export function createDecisionStateMachine() {
           oppositeProbabilities.neither < oppositeProbabilities.target;
         const emergencyQualifies =
           recommended === opposite &&
-          oppositeProbabilities.target >= 0.75 &&
-          oppositeProbabilities.confidence >= 0.75 &&
+          oppositeRaw.target >= 0.75 &&
+          clamp(input.confidence) >= 0.75 &&
           input.emergencyAligned === true;
 
         if (normalSwitchQualifies) {
@@ -354,6 +358,7 @@ export function createDecisionStateMachine() {
           stableSince = input.timestamp;
           nextSwitchAllowedAt = input.timestamp + SWITCH_COOLDOWN_MS;
           currentState = stateFor(activeDirection, 'COOLDOWN');
+          transitionReason = emergencyReady ? 'EMERGENCY' : 'PERSISTED_SWITCH';
           switchCandidate = null;
           switchCandidateSince = null;
           emergencyCandidate = null;
@@ -404,6 +409,7 @@ export function createDecisionStateMachine() {
       stableSince = null;
       nextSwitchAllowedAt = 0;
       currentState = 'WARMING';
+      transitionReason = null;
       lockedDecision = null;
       lastPublishedDecision = emptyDecision(timestamp);
       return lastPublishedDecision;

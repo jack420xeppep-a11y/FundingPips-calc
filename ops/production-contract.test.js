@@ -29,12 +29,20 @@ test('Caddy and Vite route aggregate intelligence before generic API traffic', (
 
 test('restricted deploy and CI publish, restart, and verify intelligence explicitly', () => {
   const deploy = read('./fundingpips-calc-deploy');
+  const preflight = read('./calcpro-intelligence-preflight');
+  const sudoers = read('./fundingpips-calc-deploy.sudoers');
   const workflow = read('../.github/workflows/deploy.yml');
   assert.match(deploy, /calcpro-intelligence-restart/);
   assert.match(deploy, /calcpro-intelligence-status/);
+  assert.match(deploy, /calcpro-intelligence-preflight/);
+  assert.match(preflight, /PRAGMA quick_check/);
+  assert.match(preflight, /\.backup/);
+  assert.match(preflight, /minimum_available_kb=1048576/);
+  assert.match(sudoers, /calcpro-intelligence-preflight/);
   assert.match(deploy, /\/opt\/fundingpips-calc-intelligence\//);
   assert.match(workflow, /release\/intelligence/);
   assert.match(workflow, /calcpro-intelligence-restart/);
+  assert.match(workflow, /calcpro-intelligence-preflight/);
   assert.match(workflow, /api\/intelligence\/health/);
   assert.match(workflow, /"schemaVersion":2/);
 });

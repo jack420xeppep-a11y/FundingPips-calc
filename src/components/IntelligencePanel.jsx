@@ -19,7 +19,13 @@ const formatDuration = (milliseconds) => {
 };
 
 const formatTime = (timestamp) => {
-  if (!Number.isFinite(Number(timestamp))) return '—';
+  if (
+    timestamp === null ||
+    timestamp === undefined ||
+    !Number.isFinite(Number(timestamp))
+  ) {
+    return '—';
+  }
   return new Date(Number(timestamp)).toLocaleTimeString('ru-RU', {
     hour: '2-digit',
     minute: '2-digit',
@@ -28,7 +34,9 @@ const formatTime = (timestamp) => {
 };
 
 const formatSignedMoney = (value) => {
-  if (!Number.isFinite(Number(value))) return 'WARMING';
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return 'WARMING';
+  }
   const amount = Number(value);
   const absolute = Math.abs(amount);
   const compact = absolute >= 1_000_000
@@ -50,7 +58,9 @@ function ProbabilityPath({ direction, path, primary }) {
 }
 
 function PressureRow({ label, sentiment }) {
-  const score = Number.isFinite(Number(sentiment?.score))
+  const score = sentiment?.score !== null &&
+    sentiment?.score !== undefined &&
+    Number.isFinite(Number(sentiment.score))
     ? Number(sentiment.score)
     : null;
   const direction = score === null

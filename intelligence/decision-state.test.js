@@ -153,6 +153,28 @@ test('normal reversal needs cooldown, twenty-point edge, and 120 seconds persist
   assert.equal(result.decision.state, 'COOLDOWN_LONG');
 });
 
+test('aligned emergency evidence can override cooldown after 30 seconds', () => {
+  const machine = createDecisionStateMachine();
+  advance(machine, { count: 9 });
+
+  let result;
+  for (let index = 9; index <= 11; index += 1) {
+    result = machine.update(input({
+      timestamp: START + (index * 15_000),
+      recommendation: 'long',
+      confidence: 0.8,
+      longTarget: 0.8,
+      longOpposite: 0.1,
+      shortTarget: 0.2,
+      shortOpposite: 0.7,
+      emergencyAligned: true,
+    }));
+  }
+
+  assert.equal(result.decision.fpDirection, 'long');
+  assert.equal(result.decision.transitionReason, 'EMERGENCY');
+});
+
 test('lock freezes the complete decision until explicit unlock', () => {
   const machine = createDecisionStateMachine();
   const confirmed = advance(machine, { count: 9 }).decision;
