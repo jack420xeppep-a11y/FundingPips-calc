@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createIntelligenceDatabase } from './database.js';
-import { createGoldIntelligenceRuntime } from './runtime.js';
+import {
+  buildStrategyContextKey,
+  createGoldIntelligenceRuntime,
+} from './runtime.js';
 
 const NOW = 1784194000000;
 
@@ -68,6 +71,24 @@ const setup = {
   bybitStake: 25,
   intent: 'transfer-to-bybit',
 };
+
+test('strategy context identity excludes exact and smoothed market prices', () => {
+  const first = buildStrategyContextKey({
+    ...setup,
+    entryPrice: 4029,
+    decisionReferencePrice: 4028.75,
+  });
+  const second = buildStrategyContextKey({
+    ...setup,
+    entryPrice: 4030,
+    decisionReferencePrice: 4029.55,
+  });
+  assert.equal(first, second);
+  assert.notEqual(first, buildStrategyContextKey({
+    ...setup,
+    slPct: 0.3,
+  }));
+});
 
 test('runtime returns only aggregate model state and records both shadow directions', (t) => {
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });

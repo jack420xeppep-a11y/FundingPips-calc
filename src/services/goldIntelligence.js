@@ -175,6 +175,24 @@ export function buildGoldIntelligenceQuery(setup) {
   return query;
 }
 
+export function buildGoldIntelligenceContextKey(setup) {
+  const fields = [
+    'instrument',
+    'slPct',
+    'rrRatio',
+    'stage',
+    'accountSize',
+    'riskPerTrade',
+    'fundedRisk',
+    'profitSplit',
+    'bybitStake',
+    'intent',
+  ];
+  return JSON.stringify(Object.fromEntries(
+    fields.map((field) => [field, setup?.[field]]),
+  ));
+}
+
 export function createGoldIntelligenceFeed({
   setup,
   onSnapshot = () => {},
@@ -233,4 +251,3 @@ export function createGoldIntelligenceFeed({
     },
   };
 }
-

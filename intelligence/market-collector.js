@@ -1,3 +1,5 @@
+import { createDecisionPriceTracker } from './price-context.js';
+
 const MAX_MESSAGE_BYTES = 2_000_000;
 const MAX_TRADE_UPDATES = 5_000;
 const MAX_BOOK_LEVELS = 100;
@@ -309,6 +311,7 @@ export function createGoldMarketStore({
   staleAfterMs = DEFAULT_STALE_AFTER_MS,
   onTrades = () => {},
   onSnapshot = () => {},
+  priceTracker = createDecisionPriceTracker({ now }),
 } = {}) {
   if (!Number.isInteger(maxTrades) || maxTrades < 1 || maxTrades > 1_000_000) {
     throw new Error('maxTrades must be between 1 and 1000000.');
@@ -322,6 +325,9 @@ export function createGoldMarketStore({
   }
   if (!Number.isInteger(staleAfterMs) || staleAfterMs < 1_000 || staleAfterMs > 120_000) {
     throw new Error('staleAfterMs must be between 1000 and 120000.');
+  }
+  if (!priceTracker?.update || !priceTracker?.snapshot) {
+    throw new Error('Decision price tracker is required.');
   }
 
   const trades = [];
@@ -396,6 +402,7 @@ export function createGoldMarketStore({
       market: {
         coin: GOLD_COIN,
         session: sessionForTimestamp(generatedAt),
+        priceContext: priceTracker.snapshot(),
         hyperliquid: {
           bid: bbo?.bid ?? null,
           ask: bbo?.ask ?? null,
@@ -549,6 +556,7 @@ export function createGoldMarketStore({
         stale: quote.stale,
       };
       bybitLastAt = now();
+      priceTracker.update({ price: bybit.mid, timestamp: bybitLastAt });
       notify();
     },
     subscribe(listener) {
@@ -685,4 +693,3 @@ export function createHyperliquidGoldUpstream({
     },
   };
 }
-

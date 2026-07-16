@@ -13,8 +13,8 @@ const DEFAULT_JOBS = Object.freeze({
   retention: { lastRunAt: null, status: 'idle' },
 });
 
-const setupKey = (setup) => createHash('sha256').update(JSON.stringify({
-  entryPrice: setup.entryPrice,
+export const buildStrategyContextKey = (setup) => createHash('sha256').update(JSON.stringify({
+  instrument: setup.instrument,
   slPct: setup.slPct,
   rrRatio: setup.rrRatio,
   stage: setup.stage,
@@ -97,13 +97,17 @@ export function createGoldIntelligenceRuntime({
   };
 
   const recordShadowPredictions = (setup, result, snapshot) => {
-    const key = `${Math.floor(snapshot.generatedAt / 60_000)}:${setupKey(setup)}`;
+    const key = `${Math.floor(snapshot.generatedAt / 60_000)}:${buildStrategyContextKey(setup)}`;
     if (shadowPredictionKeys.has(key)) return;
     let usable = false;
     for (const fpDirection of ['long', 'short']) {
+      const decisionReferencePrice =
+        snapshot.market?.priceContext?.decisionReferencePrice ??
+        snapshot.market?.bybit?.mid ??
+        setup.entryPrice;
       const marketForecast = buildMarketOnlyForecast({
         snapshot,
-        setup: { ...setup, fpDirection },
+        setup: { ...setup, entryPrice: decisionReferencePrice, fpDirection },
         horizonMs: HORIZON_MS,
       });
       if (!['ready', 'stale'].includes(marketForecast.status)) continue;
@@ -112,6 +116,7 @@ export function createGoldIntelligenceRuntime({
         forecast: marketForecast,
         setup: {
           ...setup,
+          entryPrice: snapshot.market?.bybit?.mid ?? setup.entryPrice,
           fpDirection,
           session: snapshot.market.session,
         },
@@ -142,16 +147,20 @@ export function createGoldIntelligenceRuntime({
       const snapshot = marketStore.snapshot();
       const wallets = database.listActiveWalletSignals();
       const modelMetrics = database.getModelMetrics();
+      const decisionReferencePrice =
+        snapshot.market?.priceContext?.decisionReferencePrice ??
+        snapshot.market?.bybit?.mid ??
+        setup.entryPrice;
       const result = buildPhaseAwareRecommendation({
         snapshot,
-        setup,
+        setup: { ...setup, entryPrice: decisionReferencePrice },
         wallets,
         modelMetrics,
         intent: setup.intent,
         horizonMs: HORIZON_MS,
       });
       recordShadowPredictions(setup, result, snapshot);
-      const stability = getStabilizer(setupKey(setup)).update(result);
+      const stability = getStabilizer(buildStrategyContextKey(setup)).update(result);
 
       return {
         version: 1,
@@ -187,6 +196,15 @@ export function createGoldIntelligenceRuntime({
           session: snapshot.market?.session ?? 'UNKNOWN',
           hyperliquidTimestamp: snapshot.market?.hyperliquid?.timestamp ?? null,
           bybitTimestamp: snapshot.market?.bybit?.timestamp ?? null,
+          priceContext: {
+            executionPrice: snapshot.market?.bybit?.mid ?? null,
+            decisionReferencePrice,
+            outcomeAnchorPrice: snapshot.market?.bybit?.mid ?? null,
+            executionTimestamp: snapshot.market?.bybit?.timestamp ?? null,
+            referenceTimestamp:
+              snapshot.market?.priceContext?.referenceTimestamp ?? null,
+            mode: snapshot.market?.priceContext?.mode ?? 'WARMING',
+          },
           stale: snapshot.status !== 'live',
         },
       };

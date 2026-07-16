@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildGoldIntelligenceContextKey,
   buildGoldIntelligenceQuery,
   createGoldIntelligenceFeed,
   parseGoldIntelligenceSnapshot,
@@ -121,6 +122,22 @@ test('query builder emits only the declared bounded setup fields', () => {
   assert.deepEqual([...query.keys()].sort(), Object.keys(setup).sort());
 });
 
+test('frontend intelligence context does not reconnect when only live price changes', () => {
+  const first = buildGoldIntelligenceContextKey({
+    ...setup,
+    entryPrice: 4029,
+  });
+  const second = buildGoldIntelligenceContextKey({
+    ...setup,
+    entryPrice: 4030,
+  });
+  assert.equal(first, second);
+  assert.notEqual(first, buildGoldIntelligenceContextKey({
+    ...setup,
+    stage: 'p2',
+  }));
+});
+
 test('EventSource feed reports lifecycle, snapshots, and closes cleanly', () => {
   class FakeEventSource {
     static instance;
@@ -165,4 +182,3 @@ test('EventSource feed reports lifecycle, snapshots, and closes cleanly', () => 
   assert.equal(received[0].combinedSignal, 0.68);
   assert.equal(FakeEventSource.instance.closed, true);
 });
-

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { createGoldIntelligenceFeed } from '../services/goldIntelligence.js';
+import {
+  buildGoldIntelligenceContextKey,
+  createGoldIntelligenceFeed,
+} from '../services/goldIntelligence.js';
 
 const OFF_STATE = Object.freeze({
   status: 'off',
@@ -20,7 +23,7 @@ export default function useGoldIntelligence({
 
   directionRef.current = onDirection;
   lockedRef.current = locked;
-  const setupKey = setup ? JSON.stringify(setup) : '';
+  const setupKey = setup ? buildGoldIntelligenceContextKey(setup) : '';
 
   useEffect(() => {
     if (!enabled || !setup) {
@@ -65,4 +68,3 @@ export default function useGoldIntelligence({
 
   return state;
 }
-
