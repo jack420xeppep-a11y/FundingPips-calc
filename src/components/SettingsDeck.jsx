@@ -67,9 +67,9 @@ export default function SettingsDeck({ values, onChange }) {
               label="Профит до выплаты, %"
               value={values.fundedPayout}
               onChange={onChange}
-              step="1"
-              min="1"
-              hint="Базовый ориентир: 8% — около безубытка цикла"
+              step="0.01"
+              min="0.01"
+              hint="Точный порог безубытка рассчитывается автоматически"
             />
           </div>
         </details>

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/domain/*.test.js src/*.test.js"
+    "test": "node --test src/domain/*.test.js src/*.test.js",
+    "test:browser": "node scripts/smoke-position-workspace.mjs"
   },
   "dependencies": {
     "react": "19.2.7",

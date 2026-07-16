@@ -75,3 +75,31 @@ test('visual system has platform identity, a lighter dark theme, and mobile rule
   assert.match(styles, /@media \(max-width: 720px\)/);
   assert.match(styles, /prefers-reduced-motion: reduce/);
 });
+
+test('position workspace exposes dynamic break-even and strategy optimization', async () => {
+  const app = await read('./App.jsx');
+  const riskRail = await read('./components/RiskRail.jsx');
+
+  assert.match(app, /calculateBreakEven/);
+  assert.match(app, /buildStrategyPresets/);
+  assert.match(app, /optimizeStrategy/);
+  assert.match(app, /<StrategyLab/);
+  assert.match(riskRail, /Безубыток/);
+  assert.match(riskRail, /Текущая цель/);
+  assert.match(riskRail, /Запас/);
+});
+
+test('mobile quick mode keeps execution data and moves analytics into a drawer', async () => {
+  const app = await read('./App.jsx');
+  const result = await read('./components/PositionResult.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(app, /mobileAdvancedOpen/);
+  assert.match(app, /aria-expanded=/);
+  assert.match(app, /Расширенные настройки/);
+  assert.match(result, /Копировать сделку/);
+  assert.match(result, /buildTradeTicket/);
+  assert.match(styles, /\.mobile-advanced-toggle/);
+  assert.match(styles, /\.advanced-content/);
+  assert.match(styles, /\.workspace:not\(\.advanced-open\)/);
+});

@@ -6,6 +6,7 @@ import RecoveryView from './components/RecoveryView.jsx';
 import RiskRail from './components/RiskRail.jsx';
 import ScenarioTable from './components/ScenarioTable.jsx';
 import SettingsDeck from './components/SettingsDeck.jsx';
+import StrategyLab from './components/StrategyLab.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import {
   INSTRUMENTS,
@@ -14,6 +15,12 @@ import {
   calculateScenarios,
   getAccountSettings,
 } from './domain/calculator.js';
+import {
+  STRATEGY_GOALS,
+  buildStrategyPresets,
+  calculateBreakEven,
+  optimizeStrategy,
+} from './domain/strategies.js';
 
 const initialPosition = {
   instrument: 'GBPUSD',
@@ -71,13 +78,22 @@ export default function App() {
   const [activeView, setActiveView] = useState('position');
   const [positionValues, setPositionValues] = useState(initialPosition);
   const [recoveryValues, setRecoveryValues] = useState(initialRecovery);
+  const [strategyGoal, setStrategyGoal] = useState('balanced');
+  const [recommendation, setRecommendation] = useState(null);
+  const [mobileAdvancedOpen, setMobileAdvancedOpen] = useState(false);
   const [theme, toggleTheme] = useTheme();
 
   const position = useMemo(() => calculatePosition(positionValues), [positionValues]);
   const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
+  const breakEven = useMemo(() => calculateBreakEven(positionValues), [positionValues]);
+  const strategyPresets = useMemo(
+    () => buildStrategyPresets(positionValues),
+    [positionValues],
+  );
   const recovery = useMemo(() => calculateRecovery(recoveryValues), [recoveryValues]);
 
   const updatePosition = (field, value) => {
+    setRecommendation(null);
     setPositionValues((current) => {
       if (field === 'instrument') {
         const instrument = INSTRUMENTS[value];
@@ -108,6 +124,12 @@ export default function App() {
 
       return { ...current, [field]: value };
     });
+  };
+
+  const applyStrategy = (strategy) => {
+    if (strategy?.status !== 'ready') return;
+    setPositionValues((current) => ({ ...current, ...strategy.stakes }));
+    setRecommendation(strategy);
   };
 
   const updateRecovery = (field, value) => {
@@ -192,13 +214,46 @@ export default function App() {
           {activeView === 'position' ? (
             <div id="panel-position" role="tabpanel" aria-labelledby="tab-position">
               <PositionControls values={positionValues} onChange={updatePosition} />
-              <div className="workspace">
+              <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>
                 <div className="primary-workspace">
-                  <PositionResult result={position} rrRatio={positionValues.rrRatio} />
-                  <SettingsDeck values={positionValues} onChange={updatePosition} />
-                  <ScenarioTable scenarios={scenarios} />
+                  <PositionResult
+                    result={position}
+                    rrRatio={positionValues.rrRatio}
+                    instrument={positionValues.instrument}
+                  />
+                  <button
+                    className="mobile-advanced-toggle"
+                    type="button"
+                    aria-expanded={mobileAdvancedOpen}
+                    aria-controls="advanced-controls"
+                    onClick={() => setMobileAdvancedOpen((current) => !current)}
+                  >
+                    <span>
+                      <strong>Расширенные настройки</strong>
+                      <small>Стратегии, параметры и сценарии цикла</small>
+                    </span>
+                    <i aria-hidden="true">{mobileAdvancedOpen ? '−' : '+'}</i>
+                  </button>
+                  <div id="advanced-controls" className="advanced-content">
+                    <SettingsDeck values={positionValues} onChange={updatePosition} />
+                    <StrategyLab
+                      goals={STRATEGY_GOALS}
+                      selectedGoal={strategyGoal}
+                      onGoalChange={(goal) => {
+                        setStrategyGoal(goal);
+                        setRecommendation(null);
+                      }}
+                      recommendation={recommendation}
+                      presets={strategyPresets}
+                      onOptimize={() => setRecommendation(
+                        optimizeStrategy(positionValues, strategyGoal),
+                      )}
+                      onApply={applyStrategy}
+                    />
+                    <ScenarioTable scenarios={scenarios} />
+                  </div>
                 </div>
-                <RiskRail values={positionValues} position={position} />
+                <RiskRail values={positionValues} position={position} breakEven={breakEven} />
               </div>
             </div>
           ) : (

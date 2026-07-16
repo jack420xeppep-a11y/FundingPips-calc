@@ -79,6 +79,25 @@ test('prepared strategy comparison is calculated from the selected account', () 
   );
 });
 
+test('prepared strategy stakes stay on a fifty-cent step for larger accounts', () => {
+  const input = {
+    ...baseInput,
+    accountPreset: '25k',
+    ...getAccountSettings('25k', 2, 1),
+  };
+  const strategies = buildStrategyPresets(input);
+
+  assert.deepEqual(strategies[1].stakes, {
+    bybitP1: 88,
+    bybitP2: 150.5,
+    bybitFunded: 138,
+  });
+  assert.ok(
+    strategies.every(({ stakes }) =>
+      Object.values(stakes).every((stake) => Number.isInteger(stake * 2))),
+  );
+});
+
 test('optimizer exposes all requested goals and produces deterministic stakes', () => {
   assert.deepEqual(
     STRATEGY_GOALS.map(({ id }) => id),

@@ -31,7 +31,7 @@ export const STRATEGY_GOALS = Object.freeze([
   {
     id: 'max-fp-failure-profit',
     label: 'Максимум при сливе FP',
-    description: 'Усиленный Bybit-first профиль с большим запасом при провале этапа FP.',
+    description: 'Максимальные ставки в пределах профиля Bybit-first для большего запаса при провале FP.',
   },
   {
     id: 'minimum-funded-tp',
@@ -55,7 +55,8 @@ const isPositive = (value) => Number.isFinite(Number(value)) && Number(value) > 
 const roundStakeUp = (value) =>
   round(Math.ceil((Number(value) - Number.EPSILON) / MONEY_STEP) * MONEY_STEP);
 
-const roundStake = (value) => round(Number(value) / MONEY_STEP) * MONEY_STEP;
+const roundStake = (value) =>
+  round(Math.round(Number(value) / MONEY_STEP) * MONEY_STEP);
 
 const safePercentage = (value) =>
   Math.ceil((Number(value) - Number.EPSILON) * 100) / 100;

@@ -1,0 +1,277 @@
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const profile = await mkdtemp(join(tmpdir(), 'calcpro-smoke-'));
+const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
+const screenshotPath = process.argv[3] ?? join(tmpdir(), 'calcpro-mobile-smoke.png');
+
+const chrome = spawn(chromePath, [
+  '--headless=new',
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--disable-background-networking',
+  '--remote-debugging-port=0',
+  `--user-data-dir=${profile}`,
+  'about:blank',
+], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+let chromeErrors = '';
+chrome.stderr.on('data', (chunk) => {
+  chromeErrors += chunk.toString();
+});
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function retry(fn, attempts = 50) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      await delay(100);
+    }
+  }
+  throw lastError;
+}
+
+class CdpClient {
+  constructor(socket) {
+    this.socket = socket;
+    this.nextId = 1;
+    this.pending = new Map();
+    this.events = [];
+    socket.addEventListener('message', ({ data }) => {
+      const message = JSON.parse(data);
+      if (message.id) {
+        const pending = this.pending.get(message.id);
+        this.pending.delete(message.id);
+        if (message.error) pending.reject(new Error(message.error.message));
+        else pending.resolve(message.result);
+        return;
+      }
+      this.events.push(message);
+    });
+  }
+
+  send(method, params = {}) {
+    const id = this.nextId;
+    this.nextId += 1;
+    this.socket.send(JSON.stringify({ id, method, params }));
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+  }
+}
+
+let socket;
+try {
+  const port = await retry(async () => {
+    const activePort = await readFile(join(profile, 'DevToolsActivePort'), 'utf8');
+    const value = Number(activePort.split('\n')[0]);
+    if (!Number.isInteger(value)) throw new Error('Chrome did not publish a debugging port');
+    return value;
+  }, 200).catch((error) => {
+    throw new Error(`Chrome did not start: ${chromeErrors || error.message}`);
+  });
+
+  const target = await retry(async () => {
+    const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+    if (!response.ok) throw new Error(`CDP discovery failed: ${response.status}`);
+    const targets = await response.json();
+    const page = targets.find((item) => item.type === 'page');
+    if (!page) throw new Error('No Chrome page target');
+    return page;
+  });
+
+  socket = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+
+  const cdp = new CdpClient(socket);
+  await cdp.send('Page.enable');
+  await cdp.send('Runtime.enable');
+  await cdp.send('Log.enable');
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await cdp.send('Page.navigate', { url });
+
+  const evaluate = async (expression) => {
+    const response = await cdp.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    return response.result.value;
+  };
+
+  await retry(async () => {
+    const ready = await evaluate(
+      "document.querySelector('#root')?.innerText.includes('Execution sizing')",
+    );
+    if (!ready) throw new Error('Position workspace is not ready');
+  }, 80);
+
+  const quickMode = await evaluate(`(() => ({
+    advancedHidden: getComputedStyle(document.querySelector('.advanced-content')).display === 'none',
+    riskHidden: getComputedStyle(document.querySelector('.risk-rail')).display === 'none',
+    copyVisible: getComputedStyle(document.querySelector('.copy-trade')).display !== 'none',
+    controlCount: document.querySelectorAll('.input-rail .field').length,
+    advancedExpanded: document.querySelector('.mobile-advanced-toggle').getAttribute('aria-expanded'),
+    noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+  }))()`);
+
+  await evaluate(`(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__calcproCopiedText = text;
+        },
+      },
+    });
+    document.querySelector('.copy-trade').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const copied = await evaluate(
+      "document.querySelector('.copy-trade').innerText.includes('Значения скопированы')",
+    );
+    if (!copied) throw new Error('Copy action did not complete');
+  });
+  const copyWorked = await evaluate(`(() =>
+    window.__calcproCopiedText?.includes('BYBIT · SHORT') &&
+    window.__calcproCopiedText?.includes('FUNDINGPIPS · LONG')
+  )()`);
+
+  await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
+  await delay(200);
+  const advancedVisible = await evaluate(
+    "getComputedStyle(document.querySelector('.advanced-content')).display !== 'none'",
+  );
+
+  await evaluate(`(() => {
+    const select = document.querySelector('#strategy-goal');
+    select.value = 'minimum-funded-tp';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await delay(100);
+  await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')]
+      .find((item) => item.textContent.includes('Подобрать параметры'));
+    button.click();
+    return true;
+  })()`);
+
+  await retry(async () => {
+    const ready = await evaluate(
+      "document.querySelector('.optimizer-result')?.innerText.includes('5.36%')",
+    );
+    if (!ready) throw new Error('Optimizer result is not ready');
+  });
+
+  await evaluate("document.querySelector('.optimizer-result .secondary-action').click()");
+  await delay(150);
+  const optimizer = await evaluate(`(() => ({
+    fundedStake: document.querySelector('#bybitFunded').value,
+    breakEvenText: document.querySelector('.break-even-block').innerText,
+  }))()`);
+
+  await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
+  await delay(100);
+  await evaluate(`(() => {
+    const select = document.querySelector('#instrument');
+    select.value = 'XAUUSD';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await delay(150);
+  const gold = await evaluate(`(() => ({
+    instrument: document.querySelector('#instrument').value,
+    entryPrice: document.querySelector('#entryPrice').value,
+    resultVisible: getComputedStyle(document.querySelector('.position-grid')).display !== 'none',
+    advancedHidden: getComputedStyle(document.querySelector('.advanced-content')).display === 'none',
+  }))()`);
+
+  const screenshot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
+
+  await evaluate("document.querySelector('.theme-toggle').click()");
+  await delay(100);
+  const darkTheme = await evaluate(`(() => ({
+    selected: document.documentElement.dataset.theme === 'dark',
+    canvas: getComputedStyle(document.body).backgroundColor,
+  }))()`);
+
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await delay(150);
+  const desktop = await evaluate(`(() => ({
+    advancedVisible: getComputedStyle(document.querySelector('.advanced-content')).display !== 'none',
+    riskVisible: getComputedStyle(document.querySelector('.risk-rail')).display !== 'none',
+    strategyVisible: getComputedStyle(document.querySelector('.strategy-lab')).display !== 'none',
+    noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+  }))()`);
+
+  const errors = cdp.events
+    .filter((event) => event.method === 'Runtime.exceptionThrown' ||
+      (event.method === 'Log.entryAdded' && event.params.entry.level === 'error'))
+    .map((event) => event.params.exceptionDetails?.exception?.description ??
+      event.params.exceptionDetails?.text ?? event.params.entry?.text);
+
+  const passed = quickMode.advancedHidden &&
+    quickMode.riskHidden &&
+    quickMode.copyVisible &&
+    quickMode.controlCount === 5 &&
+    quickMode.advancedExpanded === 'false' &&
+    quickMode.noHorizontalOverflow &&
+    copyWorked &&
+    advancedVisible &&
+    optimizer.fundedStake === '28' &&
+    optimizer.breakEvenText.includes('5.36%') &&
+    gold.instrument === 'XAUUSD' &&
+    gold.entryPrice === '2900' &&
+    gold.resultVisible &&
+    gold.advancedHidden &&
+    darkTheme.selected &&
+    darkTheme.canvas !== 'rgb(255, 255, 255)' &&
+    desktop.advancedVisible &&
+    desktop.riskVisible &&
+    desktop.strategyVisible &&
+    desktop.noHorizontalOverflow &&
+    errors.length === 0;
+
+  console.log(JSON.stringify({
+    passed,
+    quickMode,
+    copyWorked,
+    advancedVisible,
+    optimizer,
+    gold,
+    darkTheme,
+    desktop,
+    screenshotPath,
+    errors,
+  }, null, 2));
+  process.exitCode = passed ? 0 : 1;
+} finally {
+  socket?.close();
+  chrome.kill('SIGTERM');
+  await rm(profile, { recursive: true, force: true });
+}

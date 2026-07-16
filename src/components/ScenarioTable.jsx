@@ -9,7 +9,7 @@ export default function ScenarioTable({ scenarios }) {
     <section className="table-section" aria-labelledby="scenario-title">
       <header className="section-head">
         <div>
-          <span className="section-code">03 / Cycle ledger</span>
+          <span className="section-code">04 / Cycle ledger</span>
           <h2 id="scenario-title">Сценарии одного цикла</h2>
         </div>
         <span className="micro-copy">Signed P&L / USD</span>

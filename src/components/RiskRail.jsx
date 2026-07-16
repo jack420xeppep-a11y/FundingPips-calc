@@ -2,7 +2,7 @@ import React from 'react';
 
 import { formatMoney } from '../format.js';
 
-export default function RiskRail({ values, position }) {
+export default function RiskRail({ values, position, breakEven }) {
   const currentRisk = values.stage === 'funded' ? values.fundedRisk : values.riskPerTrade;
   const utilization = Math.min(100, (Number(currentRisk) / Number(values.maxDrawdown || 1)) * 100);
   const available = Math.max(0, Number(values.maxDrawdown) - Number(currentRisk));
@@ -40,7 +40,31 @@ export default function RiskRail({ values, position }) {
           <span />
         </div>
       </section>
+
+      <section className="risk-block break-even-block">
+        <span className="section-code">Cycle economics / fee-free</span>
+        <h2>Безубыточность</h2>
+        {breakEven.status === 'ready' ? (
+          <>
+            <dl>
+              <div><dt>Безубыток</dt><dd>{breakEven.safeBreakEvenPct.toFixed(2)}%</dd></div>
+              <div><dt>Текущая цель</dt><dd>{breakEven.currentTargetPct.toFixed(2)}%</dd></div>
+              <div>
+                <dt>Запас</dt>
+                <dd className={breakEven.marginPct >= 0 ? 'positive' : 'negative'}>
+                  {breakEven.marginPct >= 0 ? '+' : '−'}{Math.abs(breakEven.marginPct).toFixed(2)}%
+                </dd>
+              </div>
+            </dl>
+            <p className={`break-even-status ${breakEven.marginPct >= 0 ? 'is-safe' : 'is-risky'}`}>
+              {breakEven.marginPct >= 0 ? 'Цель выше порога безубытка' : 'Цель ниже порога безубытка'}
+            </p>
+            <small>Комиссии и спред не учитываются.</small>
+          </>
+        ) : (
+          <p className="break-even-error" role="status">{breakEven.message}</p>
+        )}
+      </section>
     </aside>
   );
 }
-

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { formatMoney, formatPrice } from '../format.js';
+import { buildTradeTicket } from '../domain/tradeTicket.js';
 
 function PriceCell({ kind, label, value, decimals }) {
   return (
@@ -67,7 +68,50 @@ function PlatformLeg({ kind, leg, decimals, rrRatio }) {
   );
 }
 
-export default function PositionResult({ result, rrRatio }) {
+export default function PositionResult({ result, rrRatio, instrument }) {
+  const [copyStatus, setCopyStatus] = useState('idle');
+
+  useEffect(() => {
+    setCopyStatus('idle');
+  }, [instrument, result]);
+
+  const copyTrade = async () => {
+    const ticket = buildTradeTicket(result, instrument);
+    if (!ticket) return;
+
+    const copyWithFallback = () => {
+      const textarea = document.createElement('textarea');
+      textarea.value = ticket;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } finally {
+        textarea.remove();
+      }
+      if (!copied) throw new Error('copy command failed');
+    };
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(ticket);
+        } catch {
+          copyWithFallback();
+        }
+      } else {
+        copyWithFallback();
+      }
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('failed');
+    }
+  };
+
   return (
     <section className="position-result" aria-labelledby="execution-title" aria-live="polite">
       <header className="section-head">
@@ -106,7 +150,18 @@ export default function PositionResult({ result, rrRatio }) {
           />
         </div>
       )}
+
+      {result.status === 'ready' ? (
+        <div className="quick-actions">
+          <button className="copy-trade" type="button" onClick={copyTrade}>
+            <span aria-hidden="true">⧉</span>
+            {copyStatus === 'copied' ? 'Значения скопированы' : 'Копировать сделку'}
+          </button>
+          <span className="copy-status" role="status" aria-live="polite">
+            {copyStatus === 'failed' ? 'Не удалось скопировать — разрешите доступ к буферу.' : ''}
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
-
