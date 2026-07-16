@@ -25,7 +25,7 @@ const TRANSITIONS = Object.freeze({
   QUALIFIED: new Set(['ACTIVE_COHORT', 'PROBATION', 'RETIRED', 'EXCLUDED']),
   ACTIVE_COHORT: new Set(['PROBATION', 'RETIRED', 'EXCLUDED']),
   PROBATION: new Set(['ACTIVE_COHORT', 'RETIRED', 'EXCLUDED']),
-  RETIRED: new Set(['OBSERVED']),
+  RETIRED: new Set(['OBSERVED', 'EXCLUDED']),
   EXCLUDED: new Set(['OBSERVED']),
 });
 
@@ -76,6 +76,12 @@ const SCHEMA = `
     interval_count INTEGER NOT NULL DEFAULT 0,
     interval_mean_ms REAL NOT NULL DEFAULT 0,
     interval_m2 REAL NOT NULL DEFAULT 0,
+    position_side TEXT CHECK(position_side IN ('LONG', 'SHORT')),
+    position_size REAL,
+    position_entry_price REAL,
+    position_value REAL,
+    position_unrealized_pnl REAL,
+    position_updated_at INTEGER,
     updated_at INTEGER NOT NULL
   ) STRICT;
 
@@ -163,6 +169,7 @@ const SCHEMA = `
     regime TEXT,
     target_band TEXT,
     complete INTEGER NOT NULL DEFAULT 0 CHECK(complete IN (0, 1)),
+    history_truncated INTEGER NOT NULL DEFAULT 0 CHECK(history_truncated IN (0, 1)),
     reconstructed_at INTEGER NOT NULL
   ) STRICT;
 
@@ -280,6 +287,12 @@ const mapWallet = (row) => {
     intervalCount: row.interval_count,
     intervalMeanMs: row.interval_mean_ms,
     intervalM2: row.interval_m2,
+    positionSide: row.position_side,
+    positionSize: row.position_size,
+    positionEntryPrice: row.position_entry_price,
+    positionValue: row.position_value,
+    positionUnrealizedPnl: row.position_unrealized_pnl,
+    positionUpdatedAt: row.position_updated_at,
     updatedAt: row.updated_at,
   };
 };
@@ -423,6 +436,22 @@ export function createIntelligenceDatabase({
       SET status = ?, exclusion_reason = ?, updated_at = ?
       WHERE address = ?
   `);
+  const setWalletReviewStatement = database.prepare(`
+    UPDATE wallets
+      SET next_review_at = ?, updated_at = ?
+      WHERE address = ?
+  `);
+  const recordPositionStatement = database.prepare(`
+    UPDATE wallets SET
+      position_side = ?,
+      position_size = ?,
+      position_entry_price = ?,
+      position_value = ?,
+      position_unrealized_pnl = ?,
+      position_updated_at = ?,
+      updated_at = ?
+    WHERE address = ?
+  `);
   const insertMarketSample = database.prepare(`
     INSERT INTO market_samples (
       timestamp, hyperliquid_mid, bybit_mid, basis_bps,
@@ -431,6 +460,20 @@ export function createIntelligenceDatabase({
       volatility_bps, oi_change_pct, mark_price, oracle_price,
       open_interest, funding, premium, session
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertFill = database.prepare(`
+    INSERT OR IGNORE INTO wallet_fills (
+      address, timestamp, tid, hash, oid, side, direction, price, size,
+      start_position, closed_pnl, crossed, fee
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertEpisode = database.prepare(`
+    INSERT INTO episodes (
+      address, side, opened_at, closed_at, entry_price, exit_price,
+      peak_size, closed_pnl, hold_ms, mfe_bps, mae_bps, captured_bps,
+      fill_count, aggressive_ratio, session, regime, target_band,
+      complete, history_truncated, reconstructed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const ensureWallet = (address, {
@@ -664,6 +707,49 @@ export function createIntelligenceDatabase({
       }));
     },
 
+    setWalletReview(address, nextReviewAt, { at = now() } = {}) {
+      const normalized = normalizeAddress(address);
+      if (
+        !Number.isSafeInteger(nextReviewAt) ||
+        nextReviewAt <= 0 ||
+        !Number.isSafeInteger(at) ||
+        at <= 0
+      ) {
+        throw new Error('Wallet review timestamp is invalid.');
+      }
+      const result = setWalletReviewStatement.run(nextReviewAt, at, normalized);
+      if (Number(result.changes) !== 1) throw new Error('Wallet does not exist.');
+      return mapWallet(selectWallet.get(normalized));
+    },
+
+    recordGoldPosition(address, position, { at = now() } = {}) {
+      const normalized = normalizeAddress(address);
+      if (!Number.isSafeInteger(at) || at <= 0) {
+        throw new Error('Position timestamp is invalid.');
+      }
+      if (position !== null && (
+        !['LONG', 'SHORT'].includes(position?.side) ||
+        !isPositive(position.size) ||
+        !isPositive(position.entryPrice) ||
+        !isFiniteNumber(position.positionValue) ||
+        !isFiniteNumber(position.unrealizedPnl)
+      )) {
+        throw new Error('Gold position is invalid.');
+      }
+      const result = recordPositionStatement.run(
+        position?.side ?? null,
+        position?.size ?? null,
+        position?.entryPrice ?? null,
+        position?.positionValue ?? null,
+        position?.unrealizedPnl ?? null,
+        at,
+        at,
+        normalized,
+      );
+      if (Number(result.changes) !== 1) throw new Error('Wallet does not exist.');
+      return mapWallet(selectWallet.get(normalized));
+    },
+
     recordMarketSample(sample) {
       const features = sample?.features ?? {};
       if (
@@ -698,6 +784,199 @@ export function createIntelligenceDatabase({
         optionalNumber(sample.premium),
         typeof sample.session === 'string' ? sample.session.slice(0, 32) : null,
       );
+    },
+
+    recordFills(address, fills) {
+      const normalized = normalizeAddress(address);
+      if (!selectWallet.get(normalized)) throw new Error('Wallet does not exist.');
+      if (!Array.isArray(fills) || fills.length > 10_000) {
+        throw new Error('Fills must be a bounded array.');
+      }
+      return withTransaction(database, () => {
+        let inserted = 0;
+        for (const fill of fills) {
+          if (
+            fill?.address !== normalized ||
+            fill.coin !== 'xyz:GOLD' ||
+            !Number.isSafeInteger(fill.timestamp) ||
+            fill.timestamp <= 0 ||
+            !Number.isSafeInteger(fill.tid) ||
+            fill.tid < 0 ||
+            !HASH_PATTERN.test(fill.hash ?? '') ||
+            !Number.isSafeInteger(fill.oid) ||
+            fill.oid < 0 ||
+            !['A', 'B'].includes(fill.side) ||
+            typeof fill.direction !== 'string' ||
+            fill.direction.length < 1 ||
+            fill.direction.length > 80 ||
+            !isPositive(fill.price) ||
+            !isPositive(fill.size) ||
+            !isFiniteNumber(fill.startPosition) ||
+            !isFiniteNumber(fill.closedPnl) ||
+            typeof fill.crossed !== 'boolean' ||
+            !isFiniteNumber(fill.fee)
+          ) {
+            throw new Error('Invalid normalized gold fill.');
+          }
+          const result = insertFill.run(
+            normalized,
+            fill.timestamp,
+            fill.tid,
+            fill.hash,
+            fill.oid,
+            fill.side,
+            fill.direction,
+            fill.price,
+            fill.size,
+            fill.startPosition,
+            fill.closedPnl,
+            fill.crossed ? 1 : 0,
+            fill.fee,
+          );
+          inserted += Number(result.changes);
+        }
+        return inserted;
+      });
+    },
+
+    listFills(address, { limit = 10_000 } = {}) {
+      const normalized = normalizeAddress(address);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 10_000) {
+        throw new Error('Fill limit is invalid.');
+      }
+      return database.prepare(`
+        SELECT * FROM wallet_fills
+        WHERE address = ?
+        ORDER BY timestamp ASC, tid ASC
+        LIMIT ?
+      `).all(normalized, limit).map((row) => ({
+        address: row.address,
+        coin: 'xyz:GOLD',
+        timestamp: row.timestamp,
+        tid: row.tid,
+        hash: row.hash,
+        oid: row.oid,
+        side: row.side,
+        direction: row.direction,
+        price: row.price,
+        size: row.size,
+        startPosition: row.start_position,
+        closedPnl: row.closed_pnl,
+        crossed: toBoolean(row.crossed),
+        fee: row.fee,
+      }));
+    },
+
+    replaceEpisodes(address, episodes) {
+      const normalized = normalizeAddress(address);
+      if (!selectWallet.get(normalized)) throw new Error('Wallet does not exist.');
+      if (!Array.isArray(episodes) || episodes.length > 5_000) {
+        throw new Error('Episodes must be a bounded array.');
+      }
+      return withTransaction(database, () => {
+        database.prepare('DELETE FROM episodes WHERE address = ?').run(normalized);
+        let inserted = 0;
+        for (const episode of episodes) {
+          if (
+            episode?.address !== normalized ||
+            !['LONG', 'SHORT'].includes(episode.side) ||
+            !Number.isSafeInteger(episode.openedAt) ||
+            episode.openedAt <= 0 ||
+            (episode.closedAt !== null && !Number.isSafeInteger(episode.closedAt)) ||
+            !isPositive(episode.entryPrice) ||
+            (episode.exitPrice !== null && !isPositive(episode.exitPrice)) ||
+            !isPositive(episode.peakSize) ||
+            !isFiniteNumber(episode.closedPnl) ||
+            !Number.isInteger(episode.fillCount) ||
+            episode.fillCount < 1 ||
+            !isFiniteNumber(episode.aggressiveRatio)
+          ) {
+            throw new Error('Invalid reconstructed episode.');
+          }
+          const result = insertEpisode.run(
+            normalized,
+            episode.side,
+            episode.openedAt,
+            episode.closedAt,
+            episode.entryPrice,
+            episode.exitPrice,
+            episode.peakSize,
+            episode.closedPnl,
+            episode.holdMs,
+            episode.mfeBps,
+            episode.maeBps,
+            episode.capturedBps,
+            episode.fillCount,
+            episode.aggressiveRatio,
+            episode.session ?? null,
+            episode.regime ?? 'UNKNOWN',
+            episode.targetBand ?? null,
+            episode.complete ? 1 : 0,
+            episode.historyTruncated ? 1 : 0,
+            now(),
+          );
+          inserted += Number(result.changes);
+        }
+        return inserted;
+      });
+    },
+
+    listEpisodes(address, { completeOnly = false, limit = 5_000 } = {}) {
+      const normalized = normalizeAddress(address);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+        throw new Error('Episode limit is invalid.');
+      }
+      return database.prepare(`
+        SELECT * FROM episodes
+        WHERE address = ?
+          AND (? = 0 OR complete = 1)
+        ORDER BY opened_at ASC, id ASC
+        LIMIT ?
+      `).all(normalized, completeOnly ? 1 : 0, limit).map((row) => ({
+        address: row.address,
+        side: row.side,
+        openedAt: row.opened_at,
+        closedAt: row.closed_at,
+        entryPrice: row.entry_price,
+        exitPrice: row.exit_price,
+        peakSize: row.peak_size,
+        closedPnl: row.closed_pnl,
+        holdMs: row.hold_ms,
+        mfeBps: row.mfe_bps,
+        maeBps: row.mae_bps,
+        capturedBps: row.captured_bps,
+        fillCount: row.fill_count,
+        aggressiveRatio: row.aggressive_ratio,
+        session: row.session,
+        regime: row.regime,
+        targetBand: row.target_band,
+        complete: toBoolean(row.complete),
+        historyTruncated: toBoolean(row.history_truncated),
+      }));
+    },
+
+    listMarketSamples({ from, to, limit = 50_000 } = {}) {
+      if (
+        !Number.isSafeInteger(from) ||
+        !Number.isSafeInteger(to) ||
+        to < from ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 50_000
+      ) {
+        throw new Error('Market sample range is invalid.');
+      }
+      return database.prepare(`
+        SELECT timestamp, bybit_mid, momentum_15m_bps
+        FROM market_samples
+        WHERE timestamp BETWEEN ? AND ?
+        ORDER BY timestamp ASC
+        LIMIT ?
+      `).all(from, to, limit).map((row) => ({
+        timestamp: row.timestamp,
+        price: row.bybit_mid,
+        regime: Math.abs(row.momentum_15m_bps) >= 20 ? 'TREND' : 'RANGE',
+      }));
     },
 
     runRetention({ at = now() } = {}) {
@@ -795,4 +1074,3 @@ export function createIntelligenceDatabase({
     },
   };
 }
-
