@@ -2,6 +2,13 @@ import React from 'react';
 
 import { formatMoney, formatSignedMoney } from '../format.js';
 
+const STRATEGY_TRADEOFFS = {
+  balanced: ['+ Ровное покрытие', '− Не максимальный резерв'],
+  'bybit-first': ['+ Защита при сливе FP', '− Выше нагрузка Bybit'],
+  'funded-first': ['+ Ниже Funded-хедж', '− Меньше компенсация'],
+  'legacy-original': ['+ Сильнее P2 / Funded', '− Funded payout 5%'],
+};
+
 function StakeStrip({ stakes }) {
   return (
     <dl className="strategy-stakes">
@@ -12,12 +19,25 @@ function StakeStrip({ stakes }) {
   );
 }
 
+function Tradeoffs({ strategyId }) {
+  const items = STRATEGY_TRADEOFFS[strategyId] ?? [
+    '+ Под текущую цель',
+    '− Ручной профиль',
+  ];
+  return (
+    <span className="strategy-tradeoffs">
+      {items.map((item) => <em key={item}>{item}</em>)}
+    </span>
+  );
+}
+
 export default function StrategyLab({
   goals,
   selectedGoal,
   onGoalChange,
   recommendation,
   presets,
+  activeStrategyId,
   onOptimize,
   onApply,
 }) {
@@ -116,10 +136,14 @@ export default function StrategyLab({
               </thead>
               <tbody>
                 {presets.map((strategy) => (
-                  <tr key={strategy.id}>
+                  <tr
+                    className={strategy.id === activeStrategyId ? 'is-active' : ''}
+                    key={strategy.id}
+                  >
                     <th scope="row">
                       <strong>{strategy.label}</strong>
                       <small>{strategy.description}</small>
+                      <Tradeoffs strategyId={strategy.id} />
                     </th>
                     <td>{formatMoney(strategy.stakes.bybitP1, 1)}</td>
                     <td>{formatMoney(strategy.stakes.bybitP2, 1)}</td>
@@ -141,14 +165,62 @@ export default function StrategyLab({
                         type="button"
                         onClick={() => onApply(strategy)}
                         aria-label={`Применить стратегию ${strategy.label}`}
+                        aria-pressed={strategy.id === activeStrategyId}
                       >
-                        Применить
+                        {strategy.id === activeStrategyId ? 'Активна' : 'Применить'}
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="strategy-cards" aria-label="Готовые стратегии">
+            {presets.map((strategy) => (
+              <article
+                className={`strategy-card ${strategy.id === activeStrategyId ? 'is-active' : ''}`}
+                key={strategy.id}
+              >
+                <header>
+                  <div>
+                    <span>{strategy.id === activeStrategyId ? 'ACTIVE PROFILE' : 'PRESET'}</span>
+                    <h4>{strategy.label}</h4>
+                  </div>
+                  <strong>{strategy.safeBreakEvenPct?.toFixed(2) ?? '—'}% БУ</strong>
+                </header>
+                <p>{strategy.description}</p>
+                <Tradeoffs strategyId={strategy.id} />
+                <dl>
+                  <div><dt>P1</dt><dd>{formatMoney(strategy.stakes.bybitP1, 1)}</dd></div>
+                  <div><dt>P2</dt><dd>{formatMoney(strategy.stakes.bybitP2, 1)}</dd></div>
+                  <div><dt>Funded</dt><dd>{formatMoney(strategy.stakes.bybitFunded, 1)}</dd></div>
+                  <div><dt>Payout</dt><dd>{strategy.fundedPayout.toFixed(0)}%</dd></div>
+                </dl>
+                <footer>
+                  <span>
+                    Слив P2
+                    <b className={strategy.phaseTwoFailure >= 0 ? 'positive' : 'negative'}>
+                      {formatSignedMoney(strategy.phaseTwoFailure, 2)}
+                    </b>
+                  </span>
+                  <span>
+                    Слив Funded
+                    <b className={strategy.fundedFailure >= 0 ? 'positive' : 'negative'}>
+                      {formatSignedMoney(strategy.fundedFailure, 2)}
+                    </b>
+                  </span>
+                </footer>
+                <button
+                  className="table-action"
+                  type="button"
+                  onClick={() => onApply(strategy)}
+                  aria-pressed={strategy.id === activeStrategyId}
+                >
+                  {strategy.id === activeStrategyId ? 'Профиль активен' : 'Применить профиль'}
+                </button>
+              </article>
+            ))}
           </div>
         </section>
       </div>

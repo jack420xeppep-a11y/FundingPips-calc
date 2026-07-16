@@ -76,12 +76,18 @@ Dark theme deliberately avoids near-black:
 - Execution result: paired platform legs with direction, lots, TP, SL, and P&L intent.
 - Risk summary: account/challenge limits and exposure status.
 - Settings deck: FundingPips parameters and Bybit stakes, packed in expandable groups.
+- Active strategy strip: the applied profile, P1/P2/Funded stakes, and payout
+  remain visible between inputs and execution.
 - Scenario ledger: full cycle outcomes with signed semantic values.
 - Recovery ladder: separate strategy inputs, table, and compact summary.
 - Validation: invalid numeric inputs produce an inline message without breaking the layout.
-- Intelligence strip: one compact gold-only decision layer adjacent to the
-  direction control. It shows paired price-path probabilities, confidence,
-  freshness, and model maturity without exposing wallet identities.
+- Intelligence strip: one compact gold-only decision line before execution.
+  It shows the paired direction, confidence, stable state, and age without
+  pushing lot sizes below the first viewport.
+- Intelligence disclosure: probabilities, Whale Pressure, timing, and reasons
+  live after the execution legs in a native expandable section.
+- Mobile readiness dock: after the trader reaches execution it exposes
+  quote/risk/direction/TP-SL readiness and one lock-copy action.
 - Calm Sentiment brief: stable decision first, then DOWN/UP/NEITHER, followed
   by three signed pressure rows for Market, Whales, and Combined.
 - Whale detail is aggregate-only: qualified count, new positions 15m, net
@@ -99,10 +105,11 @@ Dark theme deliberately avoids near-black:
 - 768–1023px: result full-width; settings and limits form a two-column lower deck.
 - 320–767px: one-column reading order, two-column compact inputs where labels allow, stacked platform legs, sticky view tabs, horizontally scrollable data tables with an explicit label.
 - Mobile result order: inputs → exposure → Bybit leg → FundingPips leg → settings → scenarios.
-- Mobile intelligence order: compact AUTO switch → recommendation/path
-  probability → combined pressure → execution legs. Whale diagnostics,
-  component detail, timing, and reasons move into the existing advanced
-  drawer.
+- Mobile intelligence order: compact AUTO switch → active profile → compact
+  recommendation → execution legs → expandable intelligence detail. Whale
+  diagnostics, component detail, timing, and reasons stay behind disclosure.
+- Mobile strategy comparison uses vertically scannable cards; the full ledger
+  remains the desktop representation.
 - All touch targets are at least 44px; no page-level horizontal overflow.
 
 ## Accessibility
@@ -139,3 +146,6 @@ Dark theme deliberately avoids near-black:
 - Wallet warming is shown as text, never a fabricated neutral percentage.
 - Frozen snapshot survives reload/theme/view changes and remains explicitly
   expired until the user unlocks it.
+- Mobile readiness dock stays hidden before execution, appears after the result
+  enters the working viewport, and never obscures the initial decision context.
+- Active preset identity and its payout remain visible after every apply action.
