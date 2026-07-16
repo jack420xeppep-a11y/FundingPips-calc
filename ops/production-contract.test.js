@@ -36,5 +36,5 @@ test('restricted deploy and CI publish, restart, and verify intelligence explici
   assert.match(workflow, /release\/intelligence/);
   assert.match(workflow, /calcpro-intelligence-restart/);
   assert.match(workflow, /api\/intelligence\/health/);
-  assert.match(workflow, /"schemaVersion":1/);
+  assert.match(workflow, /"schemaVersion":2/);
 });

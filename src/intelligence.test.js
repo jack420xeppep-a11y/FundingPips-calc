@@ -103,6 +103,37 @@ const snapshot = {
       },
       reasons: ['trend and momentum supports SHORT'],
     },
+    whale: {
+      status: 'ready',
+      direction: 'SHORT',
+      score: -72,
+      strength: 72,
+      qualifiedCount: 7,
+      newPositions15m: { long: 1, short: 5 },
+      netPositionChange15m: -1800000,
+      netPositionChange1h: -2400000,
+      entryCluster: { p25: 4028, p75: 4032 },
+      conviction: 'HIGH',
+      freshnessMs: 42000,
+      maturity: 0.72,
+      reasons: ['7 qualified whale positions are aggregated'],
+    },
+    combined: {
+      status: 'ready',
+      direction: 'SHORT',
+      score: -66,
+      strength: 66,
+      generatedAt: 1784194000000,
+      stableForMs: 225000,
+      source: 'MARKET_WHALE',
+    },
+  },
+  walletState: {
+    status: 'ready',
+    maturity: 0.72,
+    qualifiedCount: 7,
+    weight: 0.32,
+    freshnessMs: 42000,
   },
 };
 
@@ -112,6 +143,8 @@ test('frontend validates the aggregate intelligence contract', () => {
   assert.equal(parsed.paths.down.probability, 0.64);
   assert.equal(parsed.cohortSize, 18);
   assert.equal(parsed.sentiment.market.score, -66);
+  assert.equal(parsed.sentiment.whale.qualifiedCount, 7);
+  assert.equal(parsed.sentiment.combined.source, 'MARKET_WHALE');
 
   assert.equal(parseGoldIntelligenceSnapshot({
     ...snapshot,

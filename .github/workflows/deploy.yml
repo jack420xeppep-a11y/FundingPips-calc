@@ -132,7 +132,7 @@ jobs:
             intelligence="$(curl --fail --silent --show-error \
               https://farmcalc.duckdns.org/api/intelligence/health || true)"
             if printf '%s' "$intelligence" | grep -Eq '"status":"(live|stale|warming)"' && \
-              printf '%s' "$intelligence" | grep -q '"schemaVersion":1'; then
+              printf '%s' "$intelligence" | grep -q '"schemaVersion":2'; then
               intelligence_ok=true
               break
             fi

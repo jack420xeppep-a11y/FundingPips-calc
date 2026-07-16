@@ -114,6 +114,70 @@ const validMarketSentiment = (sentiment) => {
   ));
 };
 
+const validWhaleSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(sentiment.status) &&
+    ['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) &&
+    (
+      sentiment.score === null ||
+      (
+        Number.isFinite(Number(sentiment.score)) &&
+        Number(sentiment.score) >= -100 &&
+        Number(sentiment.score) <= 100
+      )
+    ) &&
+    Number.isInteger(sentiment.qualifiedCount) &&
+    sentiment.qualifiedCount >= 0 &&
+    sentiment.qualifiedCount <= 100_000 &&
+    Number.isInteger(sentiment.newPositions15m?.long) &&
+    sentiment.newPositions15m.long >= 0 &&
+    Number.isInteger(sentiment.newPositions15m?.short) &&
+    sentiment.newPositions15m.short >= 0 &&
+    ['LOW', 'MEDIUM', 'HIGH'].includes(sentiment.conviction) &&
+    Number.isFinite(Number(sentiment.maturity)) &&
+    Number(sentiment.maturity) >= 0 &&
+    Number(sentiment.maturity) <= 1 &&
+    Array.isArray(sentiment.reasons) &&
+    sentiment.reasons.length <= 8
+  );
+};
+
+const validCombinedSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(sentiment.status) &&
+    ['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) &&
+    (
+      sentiment.score === null ||
+      (
+        Number.isFinite(Number(sentiment.score)) &&
+        Number(sentiment.score) >= -100 &&
+        Number(sentiment.score) <= 100
+      )
+    ) &&
+    Number.isFinite(Number(sentiment.strength)) &&
+    Number(sentiment.strength) >= 0 &&
+    Number(sentiment.strength) <= 100 &&
+    ['MARKET_ONLY', 'MARKET_WHALE'].includes(sentiment.source)
+  );
+};
+
+const validWalletState = (state) => {
+  if (!state) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(state.status) &&
+    Number.isFinite(Number(state.maturity)) &&
+    Number(state.maturity) >= 0 &&
+    Number(state.maturity) <= 1 &&
+    Number.isInteger(state.qualifiedCount) &&
+    state.qualifiedCount >= 0 &&
+    Number.isFinite(Number(state.weight)) &&
+    Number(state.weight) >= 0 &&
+    Number(state.weight) <= 0.55
+  );
+};
+
 export function parseGoldIntelligenceSnapshot(payload) {
   let snapshot;
   try {
@@ -154,6 +218,9 @@ export function parseGoldIntelligenceSnapshot(payload) {
     !validCandidate(snapshot.candidates?.long) ||
     !validCandidate(snapshot.candidates?.short) ||
     !validMarketSentiment(snapshot.sentiment?.market) ||
+    !validWhaleSentiment(snapshot.sentiment?.whale) ||
+    !validCombinedSentiment(snapshot.sentiment?.combined) ||
+    !validWalletState(snapshot.walletState) ||
     snapshot.economics?.includesFeesOrSpread !== false ||
     snapshot.economics?.executionEnabled !== false ||
     snapshot.market?.symbol !== 'xyz:GOLD' ||
@@ -195,6 +262,7 @@ export function parseGoldIntelligenceSnapshot(payload) {
     candidates: snapshot.candidates,
     economics: snapshot.economics,
     ...(snapshot.sentiment ? { sentiment: snapshot.sentiment } : {}),
+    ...(snapshot.walletState ? { walletState: snapshot.walletState } : {}),
     market: snapshot.market,
   };
 }

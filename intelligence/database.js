@@ -42,6 +42,12 @@ const DEFAULT_RETENTION = Object.freeze({
   maxEpisodes: 250_000,
   maxPredictions: 300_000,
   maxLifecycleEvents: 250_000,
+  positionSamplesMs: 30 * DAY_MS,
+  sentimentSnapshotsMs: 180 * DAY_MS,
+  decisionHistoryMs: 180 * DAY_MS,
+  maxPositionSamples: 500_000,
+  maxSentimentSnapshots: 250_000,
+  maxDecisionHistory: 300_000,
 });
 
 const SCHEMA = `
@@ -232,6 +238,46 @@ const SCHEMA = `
     updated_at INTEGER NOT NULL
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS wallet_position_samples (
+    id INTEGER PRIMARY KEY,
+    address TEXT NOT NULL REFERENCES wallets(address) ON DELETE CASCADE,
+    timestamp INTEGER NOT NULL,
+    side TEXT NOT NULL CHECK(side IN ('LONG', 'SHORT', 'FLAT')),
+    size REAL NOT NULL CHECK(size >= 0),
+    entry_price REAL,
+    position_value REAL NOT NULL,
+    unrealized_pnl REAL NOT NULL,
+    UNIQUE(address, timestamp)
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS sentiment_snapshots (
+    id INTEGER PRIMARY KEY,
+    timestamp INTEGER NOT NULL UNIQUE,
+    market_score REAL NOT NULL CHECK(market_score >= -100 AND market_score <= 100),
+    whale_score REAL CHECK(whale_score >= -100 AND whale_score <= 100),
+    combined_score REAL NOT NULL CHECK(combined_score >= -100 AND combined_score <= 100),
+    direction TEXT NOT NULL CHECK(direction IN ('LONG', 'SHORT', 'NEUTRAL')),
+    qualified_count INTEGER NOT NULL CHECK(qualified_count >= 0),
+    freshness_ms INTEGER,
+    maturity REAL NOT NULL CHECK(maturity >= 0 AND maturity <= 1)
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS decision_history (
+    id INTEGER PRIMARY KEY,
+    strategy_key TEXT NOT NULL CHECK(length(strategy_key) = 64),
+    emitted_at INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    fp_direction TEXT CHECK(fp_direction IN ('long', 'short')),
+    bybit_direction TEXT CHECK(bybit_direction IN ('LONG', 'SHORT')),
+    probability_down REAL NOT NULL CHECK(probability_down >= 0 AND probability_down <= 1),
+    probability_up REAL NOT NULL CHECK(probability_up >= 0 AND probability_up <= 1),
+    probability_neither REAL NOT NULL CHECK(probability_neither >= 0 AND probability_neither <= 1),
+    confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+    source TEXT NOT NULL,
+    outcome_anchor_price REAL CHECK(outcome_anchor_price > 0),
+    expires_at INTEGER NOT NULL
+  ) STRICT;
+
   CREATE INDEX IF NOT EXISTS gold_trades_timestamp_idx
     ON gold_trades(timestamp);
   CREATE INDEX IF NOT EXISTS gold_trades_buyer_idx
@@ -252,6 +298,14 @@ const SCHEMA = `
     ON cohort_memberships(cohort, ended_at, score);
   CREATE INDEX IF NOT EXISTS predictions_outcome_idx
     ON predictions(outcome, expires_at);
+  CREATE INDEX IF NOT EXISTS wallet_position_samples_address_time_idx
+    ON wallet_position_samples(address, timestamp);
+  CREATE INDEX IF NOT EXISTS wallet_position_samples_time_idx
+    ON wallet_position_samples(timestamp);
+  CREATE INDEX IF NOT EXISTS sentiment_snapshots_time_idx
+    ON sentiment_snapshots(timestamp);
+  CREATE INDEX IF NOT EXISTS decision_history_strategy_time_idx
+    ON decision_history(strategy_key, emitted_at);
 `;
 
 const isPositive = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
@@ -393,6 +447,9 @@ export function createIntelligenceDatabase({
   database.prepare(
     'INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, ?)',
   ).run(now());
+  database.prepare(
+    'INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, ?)',
+  ).run(now());
   if (!inMemory) chmodSync(path, 0o600);
 
   const insertWallet = database.prepare(`
@@ -455,6 +512,23 @@ export function createIntelligenceDatabase({
       position_updated_at = ?,
       updated_at = ?
     WHERE address = ?
+  `);
+  const insertPositionSample = database.prepare(`
+    INSERT INTO wallet_position_samples (
+      address, timestamp, side, size, entry_price, position_value, unrealized_pnl
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(address, timestamp) DO UPDATE SET
+      side = excluded.side,
+      size = excluded.size,
+      entry_price = excluded.entry_price,
+      position_value = excluded.position_value,
+      unrealized_pnl = excluded.unrealized_pnl
+  `);
+  const insertSentimentSnapshot = database.prepare(`
+    INSERT OR IGNORE INTO sentiment_snapshots (
+      timestamp, market_score, whale_score, combined_score, direction,
+      qualified_count, freshness_ms, maturity
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertMarketSample = database.prepare(`
     INSERT INTO market_samples (
@@ -812,7 +886,95 @@ export function createIntelligenceDatabase({
         normalized,
       );
       if (Number(result.changes) !== 1) throw new Error('Wallet does not exist.');
+      insertPositionSample.run(
+        normalized,
+        at,
+        position?.side ?? 'FLAT',
+        position?.size ?? 0,
+        position?.entryPrice ?? null,
+        position?.positionValue ?? 0,
+        position?.unrealizedPnl ?? 0,
+      );
       return mapWallet(selectWallet.get(normalized));
+    },
+
+    listWalletPositionSamples({ from, to, limit = 50_000 } = {}) {
+      if (
+        !Number.isSafeInteger(from) ||
+        !Number.isSafeInteger(to) ||
+        to < from ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 50_000
+      ) {
+        throw new Error('Wallet position sample range is invalid.');
+      }
+      return database.prepare(`
+        SELECT
+          address, timestamp, side, size, entry_price,
+          position_value, unrealized_pnl
+        FROM wallet_position_samples
+        WHERE timestamp BETWEEN ? AND ?
+        ORDER BY timestamp ASC, id ASC
+        LIMIT ?
+      `).all(from, to, limit).map((row) => ({
+        address: row.address,
+        timestamp: row.timestamp,
+        side: row.side,
+        size: row.size,
+        entryPrice: row.entry_price,
+        positionValue: row.position_value,
+        unrealizedPnl: row.unrealized_pnl,
+      }));
+    },
+
+    recordSentimentSnapshot(snapshot) {
+      if (
+        !Number.isSafeInteger(snapshot?.timestamp) ||
+        snapshot.timestamp <= 0 ||
+        !isFiniteNumber(snapshot.marketScore) ||
+        snapshot.marketScore < -100 ||
+        snapshot.marketScore > 100 ||
+        (
+          snapshot.whaleScore !== null &&
+          snapshot.whaleScore !== undefined &&
+          (
+            !isFiniteNumber(snapshot.whaleScore) ||
+            snapshot.whaleScore < -100 ||
+            snapshot.whaleScore > 100
+          )
+        ) ||
+        !isFiniteNumber(snapshot.combinedScore) ||
+        snapshot.combinedScore < -100 ||
+        snapshot.combinedScore > 100 ||
+        !['LONG', 'SHORT', 'NEUTRAL'].includes(snapshot.direction) ||
+        !Number.isSafeInteger(snapshot.qualifiedCount) ||
+        snapshot.qualifiedCount < 0 ||
+        (
+          snapshot.freshnessMs !== null &&
+          snapshot.freshnessMs !== undefined &&
+          (
+            !Number.isSafeInteger(snapshot.freshnessMs) ||
+            snapshot.freshnessMs < 0
+          )
+        ) ||
+        !isFiniteNumber(snapshot.maturity) ||
+        snapshot.maturity < 0 ||
+        snapshot.maturity > 1
+      ) {
+        throw new Error('Sentiment snapshot is invalid.');
+      }
+      const result = insertSentimentSnapshot.run(
+        snapshot.timestamp,
+        snapshot.marketScore,
+        snapshot.whaleScore ?? null,
+        snapshot.combinedScore,
+        snapshot.direction,
+        snapshot.qualifiedCount,
+        snapshot.freshnessMs ?? null,
+        snapshot.maturity,
+      );
+      return Number(result.changes);
     },
 
     recordMarketSample(sample) {
@@ -1226,6 +1388,20 @@ export function createIntelligenceDatabase({
       }));
     },
 
+    listActiveWalletAddresses({ limit = 1_000 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+        throw new Error('Active wallet address limit is invalid.');
+      }
+      return database.prepare(`
+        SELECT w.address
+        FROM wallets w
+        LEFT JOIN wallet_scores s ON s.address = w.address
+        WHERE w.status = 'ACTIVE_COHORT'
+        ORDER BY COALESCE(s.overall_score, 0) DESC, w.last_seen_at DESC
+        LIMIT ?
+      `).all(limit).map((row) => row.address);
+    },
+
     recordPrediction(prediction) {
       const probabilities = [
         prediction?.probabilityUp,
@@ -1452,6 +1628,39 @@ export function createIntelligenceDatabase({
           lifecycleEvents:
             deleteOlderThan('wallet_lifecycle', 'at', at - retention.lifecycleMs) +
             enforceCap('wallet_lifecycle', 'at', retention.maxLifecycleEvents),
+          walletPositionSamples:
+            deleteOlderThan(
+              'wallet_position_samples',
+              'timestamp',
+              at - retention.positionSamplesMs,
+            ) +
+            enforceCap(
+              'wallet_position_samples',
+              'timestamp',
+              retention.maxPositionSamples,
+            ),
+          sentimentSnapshots:
+            deleteOlderThan(
+              'sentiment_snapshots',
+              'timestamp',
+              at - retention.sentimentSnapshotsMs,
+            ) +
+            enforceCap(
+              'sentiment_snapshots',
+              'timestamp',
+              retention.maxSentimentSnapshots,
+            ),
+          decisionHistory:
+            deleteOlderThan(
+              'decision_history',
+              'emitted_at',
+              at - retention.decisionHistoryMs,
+            ) +
+            enforceCap(
+              'decision_history',
+              'emitted_at',
+              retention.maxDecisionHistory,
+            ),
         };
         database.prepare(`
           INSERT INTO service_meta(key, value) VALUES ('last_retention_at', ?)
@@ -1514,6 +1723,9 @@ export function createIntelligenceDatabase({
           episodes: count('episodes'),
           cohortMemberships: count('cohort_memberships'),
           predictions: count('predictions'),
+          walletPositionSamples: count('wallet_position_samples'),
+          sentimentSnapshots: count('sentiment_snapshots'),
+          decisionHistory: count('decision_history'),
         },
       };
     },

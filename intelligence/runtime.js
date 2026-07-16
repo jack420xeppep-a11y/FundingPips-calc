@@ -6,10 +6,13 @@ import {
   createRecommendationStabilizer,
 } from './probability-engine.js';
 import { createMarketSentimentAggregator } from './sentiment.js';
+import { buildWhaleSentiment } from './whale-sentiment.js';
 
 const HORIZON_MS = 4 * 60 * 60 * 1_000;
+const HOUR_MS = 60 * 60 * 1_000;
 const DEFAULT_JOBS = Object.freeze({
   observer: { lastRunAt: null, status: 'idle' },
+  positions: { lastRunAt: null, status: 'idle' },
   cohorts: { lastRunAt: null, status: 'idle' },
   retention: { lastRunAt: null, status: 'idle' },
 });
@@ -41,6 +44,8 @@ export function createGoldIntelligenceRuntime({
   if (
     !database?.getHealth ||
     !database?.listActiveWalletSignals ||
+    !database?.listWalletPositionSamples ||
+    !database?.recordSentimentSnapshot ||
     !marketStore?.snapshot ||
     !marketStore?.subscribe ||
     !marketSentimentAggregator?.update
@@ -148,7 +153,8 @@ export function createGoldIntelligenceRuntime({
     getPublicSnapshot(setup) {
       if (closed) throw new Error('Gold intelligence runtime is closed.');
       const snapshot = marketStore.snapshot();
-      const marketSentiment = marketSentimentAggregator.update(snapshot).sentiment;
+      const marketSentimentUpdate = marketSentimentAggregator.update(snapshot);
+      const marketSentiment = marketSentimentUpdate.sentiment;
       const wallets = database.listActiveWalletSignals();
       const modelMetrics = database.getModelMetrics();
       const decisionReferencePrice =
@@ -163,6 +169,63 @@ export function createGoldIntelligenceRuntime({
         intent: setup.intent,
         horizonMs: HORIZON_MS,
       });
+      const positionSamples = database.listWalletPositionSamples({
+        from: Math.max(1, snapshot.generatedAt - HOUR_MS),
+        to: snapshot.generatedAt,
+      });
+      const whaleSentiment = buildWhaleSentiment({
+        wallets,
+        positionSamples,
+        maturity: result.maturity,
+        now: snapshot.generatedAt,
+      });
+      const walletWeight = whaleSentiment.status === 'ready'
+        ? result.walletWeight
+        : 0;
+      const combinedScore = marketSentiment.score === null
+        ? null
+        : (
+          whaleSentiment.score === null
+            ? marketSentiment.score
+            : (
+              (marketSentiment.score * (1 - walletWeight)) +
+              (whaleSentiment.score * walletWeight)
+            )
+        );
+      const combinedDirection = combinedScore === null
+        ? 'NEUTRAL'
+        : combinedScore >= 8
+          ? 'LONG'
+          : combinedScore <= -8
+            ? 'SHORT'
+            : 'NEUTRAL';
+      const combinedSentiment = {
+        status: marketSentiment.status === 'ready'
+          ? 'ready'
+          : marketSentiment.status,
+        direction: combinedDirection,
+        score: combinedScore === null ? null : Math.round(combinedScore * 10) / 10,
+        strength: combinedScore === null ? 0 : Math.round(Math.abs(combinedScore)),
+        generatedAt: marketSentiment.generatedAt,
+        stableForMs: marketSentiment.stableForMs,
+        source: whaleSentiment.status === 'ready' ? 'MARKET_WHALE' : 'MARKET_ONLY',
+      };
+      if (
+        marketSentimentUpdate.published &&
+        marketSentiment.score !== null &&
+        combinedSentiment.score !== null
+      ) {
+        database.recordSentimentSnapshot({
+          timestamp: marketSentiment.generatedAt,
+          marketScore: marketSentiment.score,
+          whaleScore: whaleSentiment.score,
+          combinedScore: combinedSentiment.score,
+          direction: combinedSentiment.direction,
+          qualifiedCount: whaleSentiment.qualifiedCount,
+          freshnessMs: whaleSentiment.freshnessMs,
+          maturity: result.maturity,
+        });
+      }
       recordShadowPredictions(setup, result, snapshot);
       const stability = getStabilizer(buildStrategyContextKey(setup)).update(result);
 
@@ -193,6 +256,15 @@ export function createGoldIntelligenceRuntime({
         economics: result.economics,
         sentiment: {
           market: marketSentiment,
+          whale: whaleSentiment,
+          combined: combinedSentiment,
+        },
+        walletState: {
+          status: whaleSentiment.status,
+          maturity: result.maturity,
+          qualifiedCount: whaleSentiment.qualifiedCount,
+          weight: walletWeight,
+          freshnessMs: whaleSentiment.freshnessMs,
         },
         market: {
           symbol: 'xyz:GOLD',
@@ -254,6 +326,7 @@ export function createGoldIntelligenceRuntime({
         },
         jobs: {
           observer: { ...jobState.observer },
+          positions: { ...(jobState.positions ?? DEFAULT_JOBS.positions) },
           cohorts: { ...jobState.cohorts },
           retention: { ...jobState.retention },
         },

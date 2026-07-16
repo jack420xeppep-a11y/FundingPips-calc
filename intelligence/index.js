@@ -15,6 +15,7 @@ import {
   createHyperliquidGoldUpstream,
 } from './market-collector.js';
 import { createBybitQuoteRelayClient } from './quote-relay-client.js';
+import { createActivePositionReconciler } from './position-reconciler.js';
 import { createGoldIntelligenceRuntime } from './runtime.js';
 import {
   createGoldIntelligenceService,
@@ -158,6 +159,7 @@ export function createProductionGoldIntelligence({
   });
   const jobState = {
     observer: { status: 'idle', lastRunAt: null, lastResult: null },
+    positions: { status: 'idle', lastRunAt: null, lastResult: null },
     cohorts: { status: 'idle', lastRunAt: null, lastResult: null },
     retention: { status: 'idle', lastRunAt: null, lastResult: null },
   };
@@ -178,6 +180,11 @@ export function createProductionGoldIntelligence({
   });
   const infoClient = createHyperliquidInfoClient();
   const observer = createCandidateObserver({
+    database,
+    infoClient,
+    logger,
+  });
+  const positionReconciler = createActivePositionReconciler({
     database,
     infoClient,
     logger,
@@ -222,6 +229,7 @@ export function createProductionGoldIntelligence({
     hyperliquidUpstream,
     quoteRelayClient,
     observer,
+    positionReconciler,
     rotator,
     runRetention: () => database.runRetention(),
     jobState,

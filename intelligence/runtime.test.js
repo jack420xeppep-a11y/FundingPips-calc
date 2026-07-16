@@ -121,6 +121,10 @@ test('runtime returns only aggregate model state and records both shadow directi
   assert.equal(result.sentiment.market.status, 'ready');
   assert.equal(result.sentiment.market.direction, 'SHORT');
   assert.ok(result.sentiment.market.score < 0);
+  assert.equal(result.sentiment.whale.status, 'warming');
+  assert.equal(result.sentiment.whale.score, null);
+  assert.equal(result.sentiment.combined.source, 'MARKET_ONLY');
+  assert.equal(result.walletState.weight, 0);
   assert.equal(result.economics.executionEnabled, false);
   assert.equal(JSON.stringify(result).includes('address'), false);
   assert.equal(database.listPredictions().length, 2);
@@ -157,7 +161,7 @@ test('runtime health is sanitized, bounded, and reports model maturity', (t) => 
 
   const health = runtime.getPublicHealth();
   assert.equal(health.status, 'live');
-  assert.equal(health.database.schemaVersion, 1);
+  assert.equal(health.database.schemaVersion, 2);
   assert.equal(health.database.rows.wallets, 0);
   assert.equal(health.model.resolvedCount, 0);
   assert.equal(JSON.stringify(health).includes(':memory:'), false);

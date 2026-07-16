@@ -37,24 +37,71 @@ test('database creates a strict independent schema with bounded storage tables',
 
   assert.equal(statSync(path).mode & 0o077, 0);
   const health = database.getHealth();
-  assert.equal(health.schemaVersion, 1);
+  assert.equal(health.schemaVersion, 2);
   assert.equal(health.journalMode, 'wal');
   assert.ok(health.databaseBytes > 0);
   assert.deepEqual(Object.keys(health.rows).sort(), [
     'cohortMemberships',
+    'decisionHistory',
     'episodes',
     'fills',
     'lifecycleEvents',
     'marketSamples',
     'predictions',
+    'sentimentSnapshots',
     'trades',
+    'walletPositionSamples',
     'wallets',
   ]);
 
   const schema = database.inspectSchema();
   assert.match(schema, /CREATE TABLE gold_trades/);
+  assert.match(schema, /CREATE TABLE wallet_position_samples/);
+  assert.match(schema, /CREATE TABLE sentiment_snapshots/);
+  assert.match(schema, /CREATE TABLE decision_history/);
   assert.match(schema, /STRICT/);
   assert.doesNotMatch(schema, /raw_json|payload_json/i);
+});
+
+test('position reconciliation stores additive samples and aggregate sentiment history', (t) => {
+  const clock = 1784194000000;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => clock });
+  t.after(() => database.close());
+  database.importSeeds([SEED]);
+
+  database.recordGoldPosition(SEED, {
+    side: 'SHORT',
+    size: 2.5,
+    entryPrice: 4032,
+    positionValue: 10_080,
+    unrealizedPnl: 50,
+  }, { at: clock });
+  database.recordGoldPosition(SEED, null, { at: clock + 15 * 60 * 1_000 });
+
+  assert.deepEqual(database.listWalletPositionSamples({
+    from: clock,
+    to: clock + 15 * 60 * 1_000,
+  }).map((sample) => ({
+    side: sample.side,
+    size: sample.size,
+    positionValue: sample.positionValue,
+  })), [
+    { side: 'SHORT', size: 2.5, positionValue: 10_080 },
+    { side: 'FLAT', size: 0, positionValue: 0 },
+  ]);
+
+  assert.equal(database.recordSentimentSnapshot({
+    timestamp: clock,
+    marketScore: -61,
+    whaleScore: -72,
+    combinedScore: -66,
+    direction: 'SHORT',
+    qualifiedCount: 7,
+    freshnessMs: 42_000,
+    maturity: 0.72,
+  }), 1);
+  assert.equal(database.getHealth().rows.walletPositionSamples, 2);
+  assert.equal(database.getHealth().rows.sentimentSnapshots, 1);
 });
 
 test('trade ingestion is idempotent and updates cheap candidate statistics', (t) => {
