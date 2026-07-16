@@ -208,6 +208,9 @@ const SCHEMA = `
     down_barrier REAL NOT NULL CHECK(down_barrier > 0),
     fp_direction TEXT NOT NULL CHECK(fp_direction IN ('long', 'short')),
     stage TEXT NOT NULL,
+    session TEXT NOT NULL,
+    regime TEXT NOT NULL,
+    confidence REAL NOT NULL,
     probability_up REAL NOT NULL,
     probability_down REAL NOT NULL,
     probability_neither REAL NOT NULL,
@@ -225,6 +228,8 @@ const SCHEMA = `
     resolved_count INTEGER NOT NULL DEFAULT 0,
     brier_sum REAL NOT NULL DEFAULT 0,
     hit_count INTEGER NOT NULL DEFAULT 0,
+    probability_sum REAL NOT NULL DEFAULT 0,
+    outcome_sum REAL NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL
   ) STRICT;
 
@@ -508,6 +513,33 @@ export function createIntelligenceDatabase({
     UPDATE cohort_memberships
       SET ended_at = ?
       WHERE id = ? AND ended_at IS NULL
+  `);
+  const insertPrediction = database.prepare(`
+    INSERT OR IGNORE INTO predictions (
+      fingerprint, created_at, expires_at, entry_price, up_barrier,
+      down_barrier, fp_direction, stage, session, regime, confidence,
+      probability_up, probability_down, probability_neither,
+      market_probability, wallet_probability, combined_probability,
+      maturity
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const resolvePrediction = database.prepare(`
+    UPDATE predictions
+      SET outcome = ?, outcome_at = ?
+      WHERE id = ? AND outcome IS NULL
+  `);
+  const updateModelMetric = database.prepare(`
+    INSERT INTO model_metrics (
+      bucket, resolved_count, brier_sum, hit_count,
+      probability_sum, outcome_sum, updated_at
+    ) VALUES (?, 1, ?, ?, ?, ?, ?)
+    ON CONFLICT(bucket) DO UPDATE SET
+      resolved_count = resolved_count + 1,
+      brier_sum = brier_sum + excluded.brier_sum,
+      hit_count = hit_count + excluded.hit_count,
+      probability_sum = probability_sum + excluded.probability_sum,
+      outcome_sum = outcome_sum + excluded.outcome_sum,
+      updated_at = excluded.updated_at
   `);
 
   const ensureWallet = (address, {
@@ -1127,6 +1159,186 @@ export function createIntelligenceDatabase({
         endedAt: row.ended_at,
         reason: row.reason,
       }));
+    },
+
+    recordPrediction(prediction) {
+      const probabilities = [
+        prediction?.probabilityUp,
+        prediction?.probabilityDown,
+        prediction?.probabilityNeither,
+      ];
+      const probabilitySum = probabilities.reduce((sum, value) => sum + Number(value), 0);
+      if (
+        !/^[0-9a-f]{64}$/.test(prediction?.fingerprint ?? '') ||
+        !Number.isSafeInteger(prediction.createdAt) ||
+        !Number.isSafeInteger(prediction.expiresAt) ||
+        prediction.expiresAt <= prediction.createdAt ||
+        !isPositive(prediction.entryPrice) ||
+        !isPositive(prediction.upBarrier) ||
+        !isPositive(prediction.downBarrier) ||
+        prediction.downBarrier >= prediction.entryPrice ||
+        prediction.upBarrier <= prediction.entryPrice ||
+        !['long', 'short'].includes(prediction.fpDirection) ||
+        typeof prediction.stage !== 'string' ||
+        typeof prediction.session !== 'string' ||
+        typeof prediction.regime !== 'string' ||
+        !isFiniteNumber(prediction.confidence) ||
+        probabilities.some((value) => !isFiniteNumber(value) || value < 0 || value > 1) ||
+        Math.abs(probabilitySum - 1) > 1e-6 ||
+        !isFiniteNumber(prediction.marketProbability) ||
+        (
+          prediction.walletProbability !== null &&
+          !isFiniteNumber(prediction.walletProbability)
+        ) ||
+        !isFiniteNumber(prediction.combinedProbability) ||
+        !isFiniteNumber(prediction.maturity)
+      ) {
+        throw new Error('Prediction is invalid.');
+      }
+      const result = insertPrediction.run(
+        prediction.fingerprint,
+        prediction.createdAt,
+        prediction.expiresAt,
+        prediction.entryPrice,
+        prediction.upBarrier,
+        prediction.downBarrier,
+        prediction.fpDirection,
+        prediction.stage.slice(0, 32),
+        prediction.session.slice(0, 32),
+        prediction.regime.slice(0, 32),
+        prediction.confidence,
+        prediction.probabilityUp,
+        prediction.probabilityDown,
+        prediction.probabilityNeither,
+        prediction.marketProbability,
+        prediction.walletProbability,
+        prediction.combinedProbability,
+        prediction.maturity,
+      );
+      return Number(result.changes);
+    },
+
+    resolvePredictionsWithPrice({ timestamp, bybitMid }) {
+      if (
+        !Number.isSafeInteger(timestamp) ||
+        timestamp <= 0 ||
+        !isPositive(bybitMid)
+      ) {
+        throw new Error('Outcome price sample is invalid.');
+      }
+      return withTransaction(database, () => {
+        const rows = database.prepare(`
+          SELECT * FROM predictions
+          WHERE outcome IS NULL AND created_at < ?
+          ORDER BY created_at ASC
+          LIMIT 5000
+        `).all(timestamp);
+        const result = { resolved: 0, down: 0, up: 0, neither: 0 };
+
+        for (const row of rows) {
+          let outcome = null;
+          if (timestamp <= row.expires_at && bybitMid <= row.down_barrier) outcome = 'DOWN';
+          else if (timestamp <= row.expires_at && bybitMid >= row.up_barrier) outcome = 'UP';
+          else if (timestamp >= row.expires_at) outcome = 'NEITHER';
+          if (!outcome) continue;
+          if (Number(resolvePrediction.run(outcome, timestamp, row.id).changes) !== 1) continue;
+
+          const outcomeKey = outcome.toLowerCase();
+          result.resolved += 1;
+          result[outcomeKey] += 1;
+          const observed = {
+            UP: [1, 0, 0],
+            DOWN: [0, 1, 0],
+            NEITHER: [0, 0, 1],
+          }[outcome];
+          const predicted = [
+            row.probability_up,
+            row.probability_down,
+            row.probability_neither,
+          ];
+          const brier = predicted.reduce(
+            (sum, probability, index) => sum + ((probability - observed[index]) ** 2),
+            0,
+          ) / 3;
+          const predictedIndex = predicted.indexOf(Math.max(...predicted));
+          const observedIndex = observed.indexOf(1);
+          const predictedMaximum = predicted[predictedIndex];
+          const correct = predictedIndex === observedIndex ? 1 : 0;
+          const lower = Math.floor(predictedMaximum * 10) * 10;
+          const upper = Math.min(100, lower + 10);
+          const bucket = `CAL_${String(lower).padStart(2, '0')}_${String(upper).padStart(2, '0')}`;
+          updateModelMetric.run('ALL', brier, correct, predictedMaximum, correct, timestamp);
+          updateModelMetric.run(bucket, brier, correct, predictedMaximum, correct, timestamp);
+        }
+        return result;
+      });
+    },
+
+    listPredictions({ resolvedOnly = false, limit = 1_000 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 10_000) {
+        throw new Error('Prediction limit is invalid.');
+      }
+      return database.prepare(`
+        SELECT * FROM predictions
+        WHERE (? = 0 OR outcome IS NOT NULL)
+        ORDER BY created_at ASC, id ASC
+        LIMIT ?
+      `).all(resolvedOnly ? 1 : 0, limit).map((row) => ({
+        fingerprint: row.fingerprint,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        entryPrice: row.entry_price,
+        upBarrier: row.up_barrier,
+        downBarrier: row.down_barrier,
+        fpDirection: row.fp_direction,
+        stage: row.stage,
+        session: row.session,
+        regime: row.regime,
+        confidence: row.confidence,
+        probabilityUp: row.probability_up,
+        probabilityDown: row.probability_down,
+        probabilityNeither: row.probability_neither,
+        marketProbability: row.market_probability,
+        walletProbability: row.wallet_probability,
+        combinedProbability: row.combined_probability,
+        maturity: row.maturity,
+        outcome: row.outcome,
+        outcomeAt: row.outcome_at,
+      }));
+    },
+
+    getModelMetrics() {
+      const all = database.prepare(
+        "SELECT * FROM model_metrics WHERE bucket = 'ALL'",
+      ).get();
+      const calibration = database.prepare(`
+        SELECT * FROM model_metrics
+        WHERE bucket LIKE 'CAL_%'
+        ORDER BY bucket ASC
+      `).all().map((row) => ({
+        bucket: row.bucket,
+        count: row.resolved_count,
+        predictedRate: row.resolved_count > 0
+          ? row.probability_sum / row.resolved_count
+          : 0,
+        observedRate: row.resolved_count > 0
+          ? row.outcome_sum / row.resolved_count
+          : 0,
+      }));
+      if (!all) {
+        return {
+          resolvedCount: 0,
+          brierScore: null,
+          hitRate: null,
+          calibration,
+        };
+      }
+      return {
+        resolvedCount: all.resolved_count,
+        brierScore: all.brier_sum / all.resolved_count,
+        hitRate: all.hit_count / all.resolved_count,
+        calibration,
+      };
     },
 
     listMarketSamples({ from, to, limit = 50_000 } = {}) {
