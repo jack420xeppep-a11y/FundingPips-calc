@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import PositionControls from './components/PositionControls.jsx';
 import PositionResult from './components/PositionResult.jsx';
@@ -21,6 +21,7 @@ import {
   calculateBreakEven,
   optimizeStrategy,
 } from './domain/strategies.js';
+import useLivePrice from './hooks/useLivePrice.js';
 
 const initialPosition = {
   instrument: 'GBPUSD',
@@ -74,6 +75,27 @@ function useTheme() {
   return [theme, () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))];
 }
 
+function usePersistedBoolean(key, fallback = false) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(key);
+      return stored === null ? fallback : stored === 'true';
+    } catch {
+      return fallback;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // Автосинхронизация продолжает работать без сохранения настройки.
+    }
+  }, [key, value]);
+
+  return [value, setValue];
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState('position');
   const [positionValues, setPositionValues] = useState(initialPosition);
@@ -81,7 +103,25 @@ export default function App() {
   const [strategyGoal, setStrategyGoal] = useState('balanced');
   const [recommendation, setRecommendation] = useState(null);
   const [mobileAdvancedOpen, setMobileAdvancedOpen] = useState(false);
+  const [autoPriceEnabled, setAutoPriceEnabled] = usePersistedBoolean(
+    'calcpro-auto-price',
+  );
   const [theme, toggleTheme] = useTheme();
+
+  const applyLivePrice = useCallback((quote) => {
+    setPositionValues((current) => {
+      if (current.instrument !== quote.instrument || current.entryPrice === quote.price) {
+        return current;
+      }
+      return { ...current, entryPrice: quote.price };
+    });
+  }, []);
+
+  const livePrice = useLivePrice({
+    enabled: autoPriceEnabled,
+    instrument: positionValues.instrument,
+    onPrice: applyLivePrice,
+  });
 
   const position = useMemo(() => calculatePosition(positionValues), [positionValues]);
   const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
@@ -213,7 +253,13 @@ export default function App() {
 
           {activeView === 'position' ? (
             <div id="panel-position" role="tabpanel" aria-labelledby="tab-position">
-              <PositionControls values={positionValues} onChange={updatePosition} />
+              <PositionControls
+                values={positionValues}
+                onChange={updatePosition}
+                autoPriceEnabled={autoPriceEnabled}
+                onAutoPriceChange={setAutoPriceEnabled}
+                livePrice={livePrice}
+              />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>
                 <div className="primary-workspace">
                   <PositionResult

@@ -103,3 +103,13 @@ test('mobile quick mode keeps execution data and moves analytics into a drawer',
   assert.match(styles, /\.advanced-content/);
   assert.match(styles, /\.workspace:not\(\.advanced-open\)/);
 });
+
+test('position workspace exposes accessible Bybit live price synchronization', async () => {
+  const app = await read('./App.jsx');
+  const controls = await read('./components/PositionControls.jsx');
+
+  assert.match(app, /useLivePrice/);
+  assert.match(controls, /Автосинхронизация цены/);
+  assert.match(controls, /aria-live="polite"/);
+  assert.match(controls, /Bybit TradFi/);
+});

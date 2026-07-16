@@ -95,6 +95,10 @@ try {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   await cdp.send('Log.enable');
+  await cdp.send('Browser.grantPermissions', {
+    origin: new URL(url).origin,
+    permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'],
+  });
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,
@@ -102,13 +106,23 @@ try {
     mobile: true,
   });
   await cdp.send('Page.navigate', { url });
+  await cdp.send('Page.bringToFront');
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
 
   const evaluate = async (expression) => {
     const response = await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
       awaitPromise: true,
+      userGesture: true,
     });
+    if (response.exceptionDetails) {
+      throw new Error(
+        response.exceptionDetails.exception?.description ??
+        response.exceptionDetails.text ??
+        'Browser evaluation failed',
+      );
+    }
     return response.result.value;
   };
 
@@ -129,14 +143,6 @@ try {
   }))()`);
 
   await evaluate(`(() => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: {
-        writeText: async (text) => {
-          window.__calcproCopiedText = text;
-        },
-      },
-    });
     document.querySelector('.copy-trade').click();
     return true;
   })()`);
@@ -146,10 +152,11 @@ try {
     );
     if (!copied) throw new Error('Copy action did not complete');
   });
-  const copyWorked = await evaluate(`(() =>
-    window.__calcproCopiedText?.includes('BYBIT · SHORT') &&
-    window.__calcproCopiedText?.includes('FUNDINGPIPS · LONG')
-  )()`);
+  const copyWorked = await evaluate(`(async () => {
+    const copiedText = await navigator.clipboard.readText();
+    return copiedText.includes('BYBIT · SHORT') &&
+      copiedText.includes('FUNDINGPIPS · LONG');
+  })()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
   await delay(200);
@@ -201,6 +208,50 @@ try {
     advancedHidden: getComputedStyle(document.querySelector('.advanced-content')).display === 'none',
   }))()`);
 
+  await evaluate("document.querySelector('#auto-price').click()");
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('.live-price-status')?.innerText.includes('LIVE') &&
+      Number(document.querySelector('#entryPrice').value) > 3000
+    )()`);
+    if (!ready) throw new Error('XAUUSD+ live price is not ready');
+  }, 200);
+  const goldLive = await evaluate(`(() => ({
+    value: Number(document.querySelector('#entryPrice').value),
+    readOnly: document.querySelector('#entryPrice').readOnly,
+    status: document.querySelector('.live-price-status').innerText,
+  }))()`);
+
+  await evaluate(`(() => {
+    const select = document.querySelector('#instrument');
+    select.value = 'EURUSD';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('.live-price-status')?.innerText.includes('EURUSD+') &&
+      Number(document.querySelector('#entryPrice').value) !== 1.1559
+    )()`);
+    if (!ready) throw new Error('EURUSD+ live price is not ready');
+  });
+  const euroLive = await evaluate("Number(document.querySelector('#entryPrice').value)");
+
+  await evaluate(`(() => {
+    const select = document.querySelector('#instrument');
+    select.value = 'GBPUSD';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('.live-price-status')?.innerText.includes('GBPUSD+') &&
+      Number(document.querySelector('#entryPrice').value) !== 1.333
+    )()`);
+    if (!ready) throw new Error('GBPUSD+ live price is not ready');
+  });
+  const poundLive = await evaluate("Number(document.querySelector('#entryPrice').value)");
+
   const screenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: false,
@@ -241,7 +292,7 @@ try {
     quickMode.controlCount === 5 &&
     quickMode.advancedExpanded === 'false' &&
     quickMode.noHorizontalOverflow &&
-    copyWorked &&
+    copyWorked === true &&
     advancedVisible &&
     optimizer.fundedStake === '28' &&
     optimizer.breakEvenText.includes('5.36%') &&
@@ -249,6 +300,11 @@ try {
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
     gold.advancedHidden &&
+    goldLive.value > 3000 &&
+    goldLive.readOnly &&
+    goldLive.status.includes('XAUUSD+') &&
+    euroLive > 0 &&
+    poundLive > 0 &&
     darkTheme.selected &&
     darkTheme.canvas !== 'rgb(255, 255, 255)' &&
     desktop.advancedVisible &&
@@ -264,6 +320,7 @@ try {
     advancedVisible,
     optimizer,
     gold,
+    livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     darkTheme,
     desktop,
     screenshotPath,

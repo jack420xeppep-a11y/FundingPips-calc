@@ -13,6 +13,7 @@ export default function Field({
   min,
   max,
   hint,
+  readOnly = false,
   className = '',
 }) {
   const handleChange = (event) => {
@@ -21,7 +22,7 @@ export default function Field({
   };
 
   return (
-    <div className={`field ${className}`.trim()}>
+    <div className={`field ${readOnly ? 'field--readonly' : ''} ${className}`.trim()}>
       <label htmlFor={id}>{label}</label>
       {options ? (
         <select id={id} value={value} onChange={handleChange}>
@@ -41,6 +42,7 @@ export default function Field({
           step={step}
           min={min}
           max={max}
+          readOnly={readOnly}
         />
       )}
       {hint ? <span className="field-hint">{hint}</span> : null}
