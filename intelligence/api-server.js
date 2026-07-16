@@ -78,7 +78,9 @@ export function createIntelligenceHttpServer({
   port = 8788,
   heartbeatMs = 15_000,
   maxClients = DEFAULT_MAX_CLIENTS,
+  maxRequestsPerMinute = 600,
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+  now = Date.now,
 } = {}) {
   if (!getHealth || !getSnapshot || !subscribe) {
     throw new Error('Intelligence HTTP dependencies are required.');
@@ -93,6 +95,13 @@ export function createIntelligenceHttpServer({
     throw new Error('maxClients must be between 1 and 1000.');
   }
   if (
+    !Number.isInteger(maxRequestsPerMinute) ||
+    maxRequestsPerMinute < 1 ||
+    maxRequestsPerMinute > 60_000
+  ) {
+    throw new Error('maxRequestsPerMinute must be between 1 and 60000.');
+  }
+  if (
     !Number.isInteger(maxResponseBytes) ||
     maxResponseBytes < 1_024 ||
     maxResponseBytes > 2 * 1_024 * 1_024
@@ -102,6 +111,19 @@ export function createIntelligenceHttpServer({
 
   const clients = new Map();
   let listening = false;
+  let requestWindowStartedAt = now();
+  let predictionRequestCount = 0;
+
+  const consumePredictionRequest = () => {
+    const current = now();
+    if (current - requestWindowStartedAt >= 60_000) {
+      requestWindowStartedAt = current;
+      predictionRequestCount = 0;
+    }
+    if (predictionRequestCount >= maxRequestsPerMinute) return false;
+    predictionRequestCount += 1;
+    return true;
+  };
 
   const serialize = (payload) => {
     const body = JSON.stringify(payload);
@@ -187,6 +209,19 @@ export function createIntelligenceHttpServer({
           error: { code: 'HEALTH_UNAVAILABLE', message: 'Health state is unavailable.' },
         });
       }
+      return;
+    }
+
+    if (
+      ['/api/intelligence/snapshot', '/api/intelligence/stream'].includes(pathname) &&
+      !consumePredictionRequest()
+    ) {
+      sendJson(response, 429, {
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Intelligence request budget is temporarily exhausted.',
+        },
+      }, { 'Retry-After': '60' });
       return;
     }
 
@@ -298,4 +333,3 @@ export function createIntelligenceHttpServer({
     },
   };
 }
-

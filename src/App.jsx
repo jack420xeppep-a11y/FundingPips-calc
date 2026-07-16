@@ -313,7 +313,21 @@ export default function App() {
                     intent={intelligenceIntent}
                     onIntentChange={setIntelligenceIntent}
                     locked={intelligenceLocked}
-                    onLockToggle={() => setIntelligenceLocked((current) => !current)}
+                    onLockToggle={() => {
+                      if (!intelligenceLocked) {
+                        setIntelligenceLocked(true);
+                        return;
+                      }
+                      setIntelligenceLocked(false);
+                      const next = intelligence.snapshot?.recommendation;
+                      if (
+                        next?.autoEligible &&
+                        next.stable &&
+                        ['long', 'short'].includes(next.stableDirection)
+                      ) {
+                        applyIntelligenceDirection(next.stableDirection);
+                      }
+                    }}
                   />
                   <PositionResult
                     result={position}

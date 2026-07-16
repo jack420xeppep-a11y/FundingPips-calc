@@ -3,7 +3,7 @@ const GOLD_COIN = 'xyz:GOLD';
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/i;
 const DEFAULT_MAX_RESPONSE_BYTES = 12 * 1_024 * 1_024;
-const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_FILLS_PAGE_LIMIT = 2_000;
 const MAX_FILL_PAGES = 20;
 const MAX_GOLD_FILLS = 10_000;
@@ -249,4 +249,3 @@ export function createHyperliquidInfoClient({
     },
   };
 }
-

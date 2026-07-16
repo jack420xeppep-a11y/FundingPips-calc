@@ -57,6 +57,8 @@ export default function IntelligencePanel({
   const direction = snapshot?.recommendation?.stableDirection ??
     snapshot?.recommendation?.fpDirection;
   const bybitDirection = direction === 'long' ? 'SHORT' : direction === 'short' ? 'LONG' : '—';
+  const actionable = snapshot?.recommendation?.autoEligible === true &&
+    status !== 'no_edge';
 
   return (
     <section
@@ -80,16 +82,24 @@ export default function IntelligencePanel({
             <div>
               <span>Рекомендация</span>
               <strong>
-                FP {direction?.toUpperCase() ?? '—'} / BYBIT {bybitDirection}
+                {actionable
+                  ? `FP ${direction?.toUpperCase() ?? '—'} / BYBIT ${bybitDirection}`
+                  : 'NO EDGE / MANUAL DIRECTION'}
               </strong>
             </div>
-            <button
-              type="button"
-              className="intelligence-lock"
-              onClick={onLockToggle}
-            >
-              {locked ? 'Разблокировать AUTO' : 'Зафиксировать setup'}
-            </button>
+            {actionable || locked ? (
+              <button
+                type="button"
+                className="intelligence-lock"
+                onClick={onLockToggle}
+              >
+                {locked ? 'Разблокировать AUTO' : 'Зафиксировать setup'}
+              </button>
+            ) : (
+              <span className="intelligence-manual-note">
+                AUTO ждёт подтверждённого преимущества
+              </span>
+            )}
           </div>
 
           <div className="intelligence-paths">
@@ -161,4 +171,3 @@ export default function IntelligencePanel({
     </section>
   );
 }
-

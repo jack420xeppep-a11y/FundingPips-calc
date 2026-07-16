@@ -72,6 +72,12 @@ const setup = {
 test('runtime returns only aggregate model state and records both shadow directions', (t) => {
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });
   t.after(() => database.close());
+  const recordPrediction = database.recordPrediction;
+  let predictionWrites = 0;
+  database.recordPrediction = (prediction) => {
+    predictionWrites += 1;
+    return recordPrediction(prediction);
+  };
   const listeners = new Set();
   const marketStore = {
     snapshot: () => marketSnapshot,
@@ -96,6 +102,7 @@ test('runtime returns only aggregate model state and records both shadow directi
   assert.equal(database.listPredictions().length, 2);
   runtime.getPublicSnapshot(setup);
   assert.equal(database.listPredictions().length, 2);
+  assert.equal(predictionWrites, 2);
 
   let updates = 0;
   const unsubscribe = runtime.subscribe(() => {
@@ -131,4 +138,47 @@ test('runtime health is sanitized, bounded, and reports model maturity', (t) => 
   assert.equal(health.model.resolvedCount, 0);
   assert.equal(JSON.stringify(health).includes(':memory:'), false);
   assert.equal(JSON.stringify(health).includes('seed'), false);
+});
+
+test('runtime coalesces rapid market updates before notifying SSE subscribers', (t) => {
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });
+  t.after(() => database.close());
+  const marketListeners = new Set();
+  const scheduled = [];
+  const runtime = createGoldIntelligenceRuntime({
+    database,
+    marketStore: {
+      snapshot: () => marketSnapshot,
+      subscribe(listener) {
+        marketListeners.add(listener);
+        return () => marketListeners.delete(listener);
+      },
+    },
+    now: () => NOW,
+    broadcastIntervalMs: 1_000,
+    setTimer(callback, delay) {
+      scheduled.push({ callback, delay, cleared: false });
+      return scheduled.at(-1);
+    },
+    clearTimer(timer) {
+      timer.cleared = true;
+    },
+  });
+  t.after(() => runtime.close());
+
+  let updates = 0;
+  runtime.subscribe(() => {
+    updates += 1;
+  });
+  for (const listener of marketListeners) {
+    listener(marketSnapshot);
+    listener(marketSnapshot);
+    listener(marketSnapshot);
+  }
+  assert.equal(updates, 0);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, 1_000);
+
+  scheduled[0].callback();
+  assert.equal(updates, 1);
 });

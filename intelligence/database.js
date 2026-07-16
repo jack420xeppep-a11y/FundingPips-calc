@@ -932,6 +932,18 @@ export function createIntelligenceDatabase({
       }));
     },
 
+    getLatestFillTimestamp(address) {
+      const normalized = normalizeAddress(address);
+      const row = database.prepare(`
+        SELECT MAX(timestamp) AS timestamp
+        FROM wallet_fills
+        WHERE address = ?
+      `).get(normalized);
+      return row?.timestamp === null || row?.timestamp === undefined
+        ? null
+        : Number(row.timestamp);
+    },
+
     replaceEpisodes(address, episodes) {
       const normalized = normalizeAddress(address);
       if (!selectWallet.get(normalized)) throw new Error('Wallet does not exist.');
@@ -1420,7 +1432,7 @@ export function createIntelligenceDatabase({
 
     runRetention({ at = now() } = {}) {
       if (!Number.isSafeInteger(at) || at <= 0) throw new Error('Retention timestamp is invalid.');
-      return withTransaction(database, () => {
+      const result = withTransaction(database, () => {
         const deleted = {
           trades:
             deleteOlderThan('gold_trades', 'timestamp', at - retention.tradesMs) +
@@ -1445,12 +1457,13 @@ export function createIntelligenceDatabase({
           INSERT INTO service_meta(key, value) VALUES ('last_retention_at', ?)
           ON CONFLICT(key) DO UPDATE SET value = excluded.value
         `).run(String(at));
-        if (!inMemory) {
-          database.exec('PRAGMA wal_checkpoint(PASSIVE)');
-          database.exec('PRAGMA incremental_vacuum(200)');
-        }
         return { at, deleted };
       });
+      if (!inMemory) {
+        database.exec('PRAGMA wal_checkpoint(PASSIVE)');
+        database.exec('PRAGMA incremental_vacuum(200)');
+      }
+      return result;
     },
 
     inspectSchema() {

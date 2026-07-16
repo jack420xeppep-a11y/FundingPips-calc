@@ -32,6 +32,9 @@ export function createGoldIntelligenceRuntime({
   now = Date.now,
   jobState = DEFAULT_JOBS,
   maxStabilizers = 1_000,
+  broadcastIntervalMs = 0,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
 } = {}) {
   if (
     !database?.getHealth ||
@@ -44,11 +47,32 @@ export function createGoldIntelligenceRuntime({
   if (!Number.isInteger(maxStabilizers) || maxStabilizers < 1 || maxStabilizers > 10_000) {
     throw new Error('maxStabilizers is invalid.');
   }
+  if (
+    !Number.isInteger(broadcastIntervalMs) ||
+    broadcastIntervalMs < 0 ||
+    broadcastIntervalMs > 60_000 ||
+    typeof setTimer !== 'function' ||
+    typeof clearTimer !== 'function'
+  ) {
+    throw new Error('Broadcast scheduling configuration is invalid.');
+  }
 
   const listeners = new Set();
   const stabilizers = new Map();
-  const unsubscribeMarket = marketStore.subscribe(() => {
+  const shadowPredictionKeys = new Map();
+  let broadcastTimer;
+  const notifyListeners = () => {
+    broadcastTimer = undefined;
     for (const listener of listeners) listener();
+  };
+  const unsubscribeMarket = marketStore.subscribe(() => {
+    if (broadcastIntervalMs === 0) {
+      notifyListeners();
+      return;
+    }
+    if (broadcastTimer) return;
+    broadcastTimer = setTimer(notifyListeners, broadcastIntervalMs);
+    broadcastTimer?.unref?.();
   });
   let closed = false;
 
@@ -73,6 +97,9 @@ export function createGoldIntelligenceRuntime({
   };
 
   const recordShadowPredictions = (setup, result, snapshot) => {
+    const key = `${Math.floor(snapshot.generatedAt / 60_000)}:${setupKey(setup)}`;
+    if (shadowPredictionKeys.has(key)) return;
+    let usable = false;
     for (const fpDirection of ['long', 'short']) {
       const marketForecast = buildMarketOnlyForecast({
         snapshot,
@@ -80,6 +107,7 @@ export function createGoldIntelligenceRuntime({
         horizonMs: HORIZON_MS,
       });
       if (!['ready', 'stale'].includes(marketForecast.status)) continue;
+      usable = true;
       const record = createPredictionRecord({
         forecast: marketForecast,
         setup: {
@@ -100,6 +128,11 @@ export function createGoldIntelligenceRuntime({
         : null;
       record.maturity = result.maturity;
       database.recordPrediction(record);
+    }
+    if (!usable) return;
+    shadowPredictionKeys.set(key, snapshot.generatedAt);
+    while (shadowPredictionKeys.size > 10_000) {
+      shadowPredictionKeys.delete(shadowPredictionKeys.keys().next().value);
     }
   };
 
@@ -211,10 +244,12 @@ export function createGoldIntelligenceRuntime({
     close() {
       if (closed) return;
       closed = true;
+      if (broadcastTimer) clearTimer(broadcastTimer);
+      broadcastTimer = undefined;
       unsubscribeMarket();
       listeners.clear();
       stabilizers.clear();
+      shadowPredictionKeys.clear();
     },
   };
 }
-

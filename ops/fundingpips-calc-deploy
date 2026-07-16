@@ -5,6 +5,7 @@ set -eu
 command=${SSH_ORIGINAL_COMMAND:-}
 static_destination='/var/www/fundingpips-calc/'
 relay_destination='/opt/fundingpips-calc-relay/server/'
+intelligence_destination='/opt/fundingpips-calc-intelligence/'
 
 case "$command" in
   calcpro-relay-restart)
@@ -13,7 +14,13 @@ case "$command" in
   calcpro-relay-status)
     exec sudo -n /usr/bin/systemctl is-active calcpro-quote-relay.service
     ;;
-  rsync\ --server\ *" $static_destination"|rsync\ --server\ *" $relay_destination")
+  calcpro-intelligence-restart)
+    exec sudo -n /usr/bin/systemctl restart calcpro-gold-intelligence.service
+    ;;
+  calcpro-intelligence-status)
+    exec sudo -n /usr/bin/systemctl is-active calcpro-gold-intelligence.service
+    ;;
+  rsync\ --server\ *" $static_destination"|rsync\ --server\ *" $relay_destination"|rsync\ --server\ *" $intelligence_destination")
     case "$command" in
       *--sender*|*'..'*)
         echo 'CalcPro deploy key: read or traversal denied.' >&2

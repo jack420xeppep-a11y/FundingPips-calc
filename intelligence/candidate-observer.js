@@ -77,6 +77,7 @@ export function createCandidateObserver({
   if (
     !database?.listCandidates ||
     !database?.setWalletReview ||
+    !database?.getLatestFillTimestamp ||
     !infoClient?.fetchUserGoldFills ||
     !infoClient?.fetchGoldPosition
   ) {
@@ -125,7 +126,14 @@ export function createCandidateObserver({
 
       try {
         const candidates = database.listCandidates({
-          statuses: ['DISCOVERED', 'OBSERVED', 'RETIRED'],
+          statuses: [
+            'DISCOVERED',
+            'OBSERVED',
+            'QUALIFIED',
+            'ACTIVE_COHORT',
+            'PROBATION',
+            'RETIRED',
+          ],
           reviewBefore: at,
           limit: maxCandidates,
         });
@@ -156,8 +164,9 @@ export function createCandidateObserver({
                 at,
               });
             }
+            const latestFillTimestamp = database.getLatestFillTimestamp(current.address);
             const fills = await infoClient.fetchUserGoldFills(current.address, {
-              startTime: Math.max(1, at - lookbackMs),
+              startTime: Math.max(1, at - lookbackMs, latestFillTimestamp ?? 1),
               endTime: at,
             });
             database.recordFills(current.address, fills);
@@ -180,7 +189,10 @@ export function createCandidateObserver({
                 at,
               });
               result.excluded += 1;
-            } else if (classification.metrics.completeEpisodeCount >= 3) {
+            } else if (
+              current.status === 'OBSERVED' &&
+              classification.metrics.completeEpisodeCount >= 3
+            ) {
               database.transitionWallet(current.address, 'QUALIFIED', {
                 reason: 'minimum complete intraday episode evidence reached',
                 score: Math.min(1, classification.metrics.completeEpisodeCount / 20),
@@ -209,4 +221,3 @@ export function createCandidateObserver({
     },
   };
 }
-

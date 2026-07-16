@@ -774,6 +774,17 @@ html[data-theme="dark"] .theme-toggle__knob {
   font-weight: 800;
 }
 
+.intelligence-manual-note {
+  max-width: 230px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 .intelligence-paths {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

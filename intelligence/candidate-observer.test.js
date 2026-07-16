@@ -172,3 +172,131 @@ test('candidate failures are isolated and returned without wallet identifiers', 
   assert.equal(JSON.stringify(result).includes(ADDRESS), false);
   assert.ok(database.getWallet(ADDRESS).nextReviewAt > now);
 });
+
+test('active cohort wallets remain observable without invalid lifecycle transitions', async (t) => {
+  const hour = 60 * 60 * 1000;
+  const now = 200 * hour;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => now });
+  t.after(() => database.close());
+  database.importSeeds([ADDRESS]);
+  database.transitionWallet(ADDRESS, 'OBSERVED', {
+    reason: 'initial observation',
+    at: now - (4 * hour),
+  });
+  database.transitionWallet(ADDRESS, 'QUALIFIED', {
+    reason: 'historical evidence',
+    at: now - (3 * hour),
+  });
+  database.transitionWallet(ADDRESS, 'ACTIVE_COHORT', {
+    reason: 'cohort qualification',
+    at: now - (2 * hour),
+  });
+
+  const fills = [];
+  for (let index = 0; index < 3; index += 1) {
+    const openedAt = now - ((8 - (index * 2)) * hour);
+    fills.push(
+      normalizedFill({
+        timestamp: openedAt,
+        side: 'B',
+        startPosition: 0,
+        size: 1,
+        price: 4000 + index,
+        tid: (index * 2) + 31,
+      }),
+      normalizedFill({
+        timestamp: openedAt + (30 * 60 * 1000),
+        side: 'A',
+        startPosition: 1,
+        size: 1,
+        price: 4020 + index,
+        tid: (index * 2) + 32,
+        closedPnl: 20,
+      }),
+    );
+  }
+
+  const observer = createCandidateObserver({
+    database,
+    now: () => now,
+    maxCandidates: 5,
+    infoClient: {
+      async fetchUserGoldFills() {
+        return fills;
+      },
+      async fetchGoldPosition() {
+        return {
+          side: 'SHORT',
+          size: 1,
+          signedSize: -1,
+          entryPrice: 4040,
+          positionValue: 4040,
+          unrealizedPnl: 5,
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(await observer.runOnce(), {
+    reviewed: 1,
+    qualified: 0,
+    excluded: 0,
+    waiting: 1,
+    failed: 0,
+  });
+  const wallet = database.getWallet(ADDRESS);
+  assert.equal(wallet.status, 'ACTIVE_COHORT');
+  assert.equal(wallet.positionSide, 'SHORT');
+  assert.equal(database.listFills(ADDRESS).length, 6);
+});
+
+test('re-observation requests only the incremental fill window', async (t) => {
+  const hour = 60 * 60 * 1000;
+  let clock = 300 * hour;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => clock });
+  t.after(() => database.close());
+  database.importSeeds([ADDRESS]);
+  const latestTimestamp = clock - hour;
+  const fills = [
+    normalizedFill({
+      timestamp: latestTimestamp - 1000,
+      side: 'B',
+      startPosition: 0,
+      size: 1,
+      price: 4000,
+      tid: 81,
+    }),
+    normalizedFill({
+      timestamp: latestTimestamp,
+      side: 'A',
+      startPosition: 1,
+      size: 1,
+      price: 4010,
+      tid: 82,
+      closedPnl: 10,
+    }),
+  ];
+  const ranges = [];
+  const observer = createCandidateObserver({
+    database,
+    now: () => clock,
+    maxCandidates: 1,
+    infoClient: {
+      async fetchUserGoldFills(_address, range) {
+        ranges.push(range);
+        return fills;
+      },
+      async fetchGoldPosition() {
+        return null;
+      },
+    },
+  });
+
+  await observer.runOnce();
+  clock += 2 * hour;
+  await observer.runOnce();
+
+  assert.equal(ranges.length, 2);
+  assert.equal(ranges[1].startTime, latestTimestamp);
+  assert.ok(ranges[1].startTime > ranges[0].startTime);
+});

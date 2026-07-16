@@ -149,6 +149,31 @@ test('market-only forecast is normalized, directional, and barrier-aware', () =>
   assert.ok(downForecast.probabilities.down > downForecast.probabilities.up);
 });
 
+test('four-hour touch model does not claim near-certain no-touch for a close gold barrier', () => {
+  const forecast = buildMarketOnlyForecast({
+    snapshot: baseSnapshot({
+      aggressiveFlow5m: 0.01,
+      aggressiveFlow15m: 0.01,
+      aggressiveFlow60m: 0,
+      bookImbalance: 0.01,
+      momentum5mBps: 0.5,
+      momentum15mBps: 1,
+      volatilityBps: 0.5,
+      openInterestChangePct: 0,
+    }),
+    setup: {
+      entryPrice: 4035,
+      slPct: 0.22,
+      rrRatio: 2,
+      fpDirection: 'long',
+    },
+    horizonMs: 4 * 60 * 60 * 1000,
+  });
+
+  assert.ok(forecast.probabilities.neither < 0.85);
+  assert.ok(forecast.probabilities.up + forecast.probabilities.down > 0.15);
+});
+
 test('outcome labels use only future Bybit MID and update calibration metrics', (t) => {
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => 1000 });
   t.after(() => database.close());

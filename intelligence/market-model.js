@@ -192,15 +192,22 @@ export function buildMarketOnlyForecast({
 
   const upDistanceBps = ((barrier.upBarrier / barrier.entryPrice) - 1) * 10_000;
   const downDistanceBps = (1 - (barrier.downBarrier / barrier.entryPrice)) * 10_000;
-  const volatilityScale = Math.max(
-    8,
-    (Math.abs(Number(features.volatilityBps ?? 0)) * 2) +
-    (Math.abs(momentum5) * 0.5),
+  const horizonMinutes = horizonMs / 60_000;
+  const volatilityScale = clamp(
+    (
+      Math.abs(Number(features.volatilityBps ?? 0)) *
+      Math.sqrt(horizonMinutes / 15)
+    ) + (
+      Math.abs(momentum5) *
+      Math.sqrt(horizonMinutes / 5)
+    ),
+    30,
+    120,
   );
   const upLogit = (directionalScore * 2.4) - (upDistanceBps / volatilityScale);
   const downLogit = (-directionalScore * 2.4) - (downDistanceBps / volatilityScale);
   const neitherLogit =
-    (Math.min(upDistanceBps, downDistanceBps) / volatilityScale) - 0.8;
+    (Math.min(upDistanceBps, downDistanceBps) / volatilityScale) - 1.1;
   const [up, down, neither] = softmax([upLogit, downLogit, neitherLogit]);
   const directionalEdge = Math.abs(up - down);
   const dataFreshness = snapshot.status === 'live' &&

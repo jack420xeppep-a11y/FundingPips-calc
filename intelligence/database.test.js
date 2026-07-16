@@ -220,6 +220,17 @@ test('retention removes expired high-volume rows and enforces row caps', (t) => 
   assert.equal(database.getHealth().lastRetentionAt, now);
 });
 
+test('retention checkpoints a production WAL database outside its write transaction', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'calcpro-retention-wal-'));
+  const path = join(directory, 'hypergold.sqlite');
+  const now = 1784194000000;
+  const database = createIntelligenceDatabase({ path, now: () => now });
+  t.after(() => database.close());
+
+  assert.doesNotThrow(() => database.runRetention({ at: now }));
+  assert.equal(database.getHealth().lastRetentionAt, now);
+});
+
 test('seed loader rejects oversized or malformed files without leaking contents', () => {
   const directory = mkdtempSync(join(tmpdir(), 'calcpro-seed-errors-'));
   const malformed = join(directory, 'malformed.json');

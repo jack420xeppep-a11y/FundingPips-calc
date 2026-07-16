@@ -176,3 +176,26 @@ test('HTTP server enforces loopback and client bounds', () => {
     subscribe: () => () => {},
   }), /maxClients/);
 });
+
+test('HTTP server rate-limits prediction work while keeping health observable', async (t) => {
+  const server = createIntelligenceHttpServer({
+    host: '127.0.0.1',
+    port: 0,
+    maxRequestsPerMinute: 1,
+    getHealth: () => ({ version: 1, status: 'live' }),
+    getSnapshot: () => ({ version: 1 }),
+    subscribe: () => () => {},
+  });
+  const address = await server.listen();
+  t.after(() => server.close());
+
+  const first = await fetch(`${address}/api/intelligence/snapshot?${validQuery}`);
+  assert.equal(first.status, 200);
+  const limited = await fetch(`${address}/api/intelligence/snapshot?${validQuery}`);
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get('retry-after'), '60');
+  assert.equal((await limited.json()).error.code, 'RATE_LIMITED');
+
+  const health = await fetch(`${address}/api/intelligence/health`);
+  assert.equal(health.status, 200);
+});
