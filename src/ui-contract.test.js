@@ -123,7 +123,8 @@ test('gold workspace exposes safe HL Intelligence AUTO guidance and setup lock',
   const styles = await read('./styles.css');
 
   assert.match(app, /useGoldIntelligence/);
-  assert.match(app, /intelligenceLocked/);
+  assert.match(app, /tradeSnapshot/);
+  assert.match(app, /persistTradeSnapshot/);
   assert.match(controls, /HL Intelligence/);
   assert.match(controls, /OFF/);
   assert.match(controls, /AUTO/);
@@ -133,7 +134,9 @@ test('gold workspace exposes safe HL Intelligence AUTO guidance and setup lock',
   assert.match(panel, /Когорта/);
   assert.match(panel, /NO EDGE/);
   assert.match(panel, /Разблокировать AUTO/);
-  assert.match(result, /onTradeCopied/);
+  assert.match(panel, /Зафиксировать сделку/);
+  assert.match(result, /prepareTradeCopy/);
+  assert.match(result, /MARKET NOW/);
   assert.match(styles, /\.intelligence-panel/);
   assert.match(styles, /\.intelligence-paths/);
   assert.match(styles, /\.intelligence-inline/);

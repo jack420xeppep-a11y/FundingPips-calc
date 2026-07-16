@@ -22,6 +22,13 @@ import {
   calculateBreakEven,
   optimizeStrategy,
 } from './domain/strategies.js';
+import {
+  clearTradeSnapshot,
+  createTradeSnapshot,
+  loadTradeSnapshot,
+  persistTradeSnapshot,
+  resolveTradeView,
+} from './domain/tradeSnapshot.js';
 import useLivePrice from './hooks/useLivePrice.js';
 import useGoldIntelligence from './hooks/useGoldIntelligence.js';
 
@@ -112,8 +119,27 @@ export default function App() {
     'calcpro-hl-intelligence',
   );
   const [intelligenceIntent, setIntelligenceIntent] = useState('transfer-to-bybit');
-  const [intelligenceLocked, setIntelligenceLocked] = useState(false);
+  const [tradeSnapshot, setTradeSnapshot] = useState(() => loadTradeSnapshot());
+  const [intelligenceResumeAfter, setIntelligenceResumeAfter] = useState(null);
   const [theme, toggleTheme] = useTheme();
+  const intelligenceLocked = Boolean(tradeSnapshot);
+
+  useEffect(() => {
+    if (!tradeSnapshot) return;
+    setPositionValues((current) => ({
+      ...current,
+      ...tradeSnapshot.values,
+    }));
+  }, [tradeSnapshot?.id]);
+
+  useEffect(() => {
+    if (!tradeSnapshot || tradeSnapshot.expired) return undefined;
+    const delay = Math.max(0, tradeSnapshot.expiresAt - Date.now());
+    const timer = window.setTimeout(() => {
+      setTradeSnapshot(loadTradeSnapshot());
+    }, Math.min(delay + 10, 2_147_000_000));
+    return () => window.clearTimeout(timer);
+  }, [tradeSnapshot?.id, tradeSnapshot?.expiresAt, tradeSnapshot?.expired]);
 
   const applyLivePrice = useCallback((quote) => {
     setPositionValues((current) => {
@@ -168,7 +194,62 @@ export default function App() {
     setup: intelligenceSetup,
     locked: intelligenceLocked,
     onDirection: applyIntelligenceDirection,
+    resumeAfter: intelligenceResumeAfter,
+    onResynced: () => setIntelligenceResumeAfter(null),
   });
+
+  const tradeView = useMemo(() => resolveTradeView({
+    livePosition: position,
+    liveEntryPrice: positionValues.entryPrice,
+    snapshot: tradeSnapshot,
+  }), [position, positionValues.entryPrice, tradeSnapshot]);
+
+  const lockCurrentTrade = useCallback(() => {
+    if (tradeSnapshot) return tradeSnapshot;
+    const intelligenceSnapshot = intelligence.snapshot;
+    const decision = intelligenceSnapshot?.decision;
+    if (
+      !intelligenceEnabled ||
+      !intelligenceAvailable ||
+      !decision?.autoEligible ||
+      !['long', 'short'].includes(decision.fpDirection)
+    ) {
+      return null;
+    }
+    const lockedValues = {
+      ...positionValues,
+      fpDirection: decision.fpDirection,
+    };
+    const lockedPosition = calculatePosition(lockedValues);
+    try {
+      const snapshot = createTradeSnapshot({
+        position: lockedPosition,
+        values: lockedValues,
+        intelligence: intelligenceSnapshot,
+        now: Date.now(),
+      });
+      persistTradeSnapshot(snapshot);
+      setPositionValues(lockedValues);
+      setTradeSnapshot(snapshot);
+      setIntelligenceResumeAfter(null);
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }, [
+    intelligence.snapshot,
+    intelligenceAvailable,
+    intelligenceEnabled,
+    positionValues,
+    tradeSnapshot,
+  ]);
+
+  const unlockTrade = useCallback(() => {
+    if (!tradeSnapshot) return;
+    clearTradeSnapshot();
+    setTradeSnapshot(null);
+    setIntelligenceResumeAfter(Date.now());
+  }, [tradeSnapshot]);
 
   const updatePosition = (field, value) => {
     setRecommendation(null);
@@ -301,43 +382,40 @@ export default function App() {
                 intelligenceAvailable={intelligenceAvailable}
                 onIntelligenceChange={(enabled) => {
                   setIntelligenceEnabled(enabled);
-                  if (!enabled) setIntelligenceLocked(false);
                 }}
               />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>
                 <div className="primary-workspace">
                   <IntelligencePanel
-                    enabled={intelligenceEnabled}
-                    available={intelligenceAvailable}
+                    enabled={intelligenceEnabled || intelligenceLocked}
+                    available={intelligenceAvailable || intelligenceLocked}
                     state={intelligence}
                     intent={intelligenceIntent}
                     onIntentChange={setIntelligenceIntent}
                     locked={intelligenceLocked}
+                    tradeSnapshot={tradeSnapshot}
+                    syncing={intelligenceResumeAfter !== null}
                     onLockToggle={() => {
-                      if (!intelligenceLocked) {
-                        setIntelligenceLocked(true);
-                        return;
-                      }
-                      setIntelligenceLocked(false);
-                      const next = intelligence.snapshot?.recommendation;
-                      if (
-                        next?.autoEligible &&
-                        next.stable &&
-                        ['long', 'short'].includes(next.stableDirection)
-                      ) {
-                        applyIntelligenceDirection(next.stableDirection);
+                      if (intelligenceLocked) {
+                        unlockTrade();
+                      } else {
+                        lockCurrentTrade();
                       }
                     }}
                   />
                   <PositionResult
-                    result={position}
-                    rrRatio={positionValues.rrRatio}
-                    instrument={positionValues.instrument}
-                    onTradeCopied={() => {
-                      if (intelligenceEnabled && intelligenceAvailable) {
-                        setIntelligenceLocked(true);
-                      }
-                    }}
+                    result={tradeView.position}
+                    rrRatio={tradeSnapshot?.values.rrRatio ?? positionValues.rrRatio}
+                    instrument={tradeSnapshot?.instrument ?? positionValues.instrument}
+                    locked={tradeView.locked}
+                    expired={tradeView.expired}
+                    lockedEntryPrice={tradeView.lockedEntryPrice}
+                    marketNowPrice={tradeView.marketNowPrice}
+                    prepareTradeCopy={() => (
+                      tradeSnapshot?.ticket ??
+                      lockCurrentTrade()?.ticket ??
+                      null
+                    )}
                   />
                   <button
                     className="mobile-advanced-toggle"

@@ -735,6 +735,30 @@ html[data-theme="dark"] .theme-toggle__knob {
   background: var(--color-accent-soft);
 }
 
+.trade-lock-context {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-block: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-lock-context strong {
+  margin-left: auto;
+}
+
+.trade-lock-context.is-expired {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+  background: var(--color-raised);
+}
+
 .intelligence-recommendation {
   margin-top: 14px;
   padding-top: 14px;
@@ -2012,6 +2036,21 @@ tbody tr:hover {
     align-items: center;
     flex-direction: row;
     gap: 10px;
+  }
+
+  .trade-lock-context {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+    padding-inline: 10px;
+  }
+
+  .trade-lock-context strong {
+    margin-left: 0;
+  }
+
+  .trade-lock-context span:last-child {
+    grid-column: 1 / -1;
   }
 
   .position-result .section-code {

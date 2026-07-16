@@ -43,22 +43,44 @@ export default function IntelligencePanel({
   intent,
   onIntentChange,
   locked,
+  tradeSnapshot,
+  syncing = false,
   onLockToggle,
 }) {
   if (!available || !enabled) return null;
   const snapshot = state.snapshot;
-  const status = snapshot?.status ?? state.status;
+  const frozenDecision = tradeSnapshot?.decision;
+  const decision = frozenDecision ?? snapshot?.decision;
+  const status = tradeSnapshot?.expired
+    ? 'stale'
+    : syncing
+      ? 'warming'
+      : snapshot?.status ?? state.status;
   const statusLabel = STATUS_LABELS[status] ?? 'WARMING';
-  const paths = snapshot?.paths;
+  const paths = decision?.paths ?? snapshot?.paths;
   const probabilities = paths
     ? [paths.down.probability, paths.up.probability, paths.neither.probability]
     : [];
   const maximum = probabilities.length ? Math.max(...probabilities) : null;
-  const direction = snapshot?.recommendation?.stableDirection ??
+  const direction = decision?.fpDirection ??
+    snapshot?.recommendation?.stableDirection ??
     snapshot?.recommendation?.fpDirection;
   const bybitDirection = direction === 'long' ? 'SHORT' : direction === 'short' ? 'LONG' : '—';
-  const actionable = snapshot?.recommendation?.autoEligible === true &&
-    status !== 'no_edge';
+  const actionable = !syncing && !tradeSnapshot?.expired && (
+    decision?.autoEligible === true ||
+    snapshot?.recommendation?.autoEligible === true
+  ) && status !== 'no_edge';
+  const confidence = frozenDecision?.confidence ?? snapshot?.confidence;
+  const maturity = tradeSnapshot?.sentiment?.whale?.maturity ?? snapshot?.maturity;
+  const cohortSize = tradeSnapshot?.sentiment?.whale?.qualifiedCount ??
+    snapshot?.cohortSize;
+  const reasons = tradeSnapshot?.reasons ?? decision?.reasons ?? snapshot?.reasons ?? [];
+  const horizonMs = snapshot?.horizonMs ?? (
+    tradeSnapshot ? tradeSnapshot.expiresAt - tradeSnapshot.createdAt : 0
+  );
+  const lockedTargetProbability = direction === 'long'
+    ? decision?.probabilities?.down
+    : decision?.probabilities?.up;
 
   return (
     <section
@@ -72,17 +94,18 @@ export default function IntelligencePanel({
           <h2 id="intelligence-title">Predictive direction contour</h2>
         </div>
         <span className="intelligence-status">
-          <i aria-hidden="true" />{locked ? 'LOCKED' : statusLabel}
+          <i aria-hidden="true" />
+          {tradeSnapshot?.expired ? 'EXPIRED' : locked ? 'LOCKED' : syncing ? 'SYNCING' : statusLabel}
         </span>
       </header>
 
-      {snapshot ? (
+      {snapshot || tradeSnapshot ? (
         <>
           <div className="intelligence-recommendation">
             <div>
               <span>Рекомендация</span>
               <strong>
-                {actionable
+                {actionable || locked
                   ? `FP ${direction?.toUpperCase() ?? '—'} / BYBIT ${bybitDirection}`
                   : 'NO EDGE / MANUAL DIRECTION'}
               </strong>
@@ -93,7 +116,7 @@ export default function IntelligencePanel({
                 className="intelligence-lock"
                 onClick={onLockToggle}
               >
-                {locked ? 'Разблокировать AUTO' : 'Зафиксировать setup'}
+                {locked ? 'Разблокировать AUTO' : 'Зафиксировать сделку'}
               </button>
             ) : (
               <span className="intelligence-manual-note">
@@ -123,10 +146,10 @@ export default function IntelligencePanel({
           <div className="intelligence-advanced">
             <div className="intelligence-meta">
               <dl>
-                <div><dt>Уверенность</dt><dd>{pct(snapshot.confidence)}</dd></div>
-                <div><dt>Зрелость модели</dt><dd>{pct(snapshot.maturity)}</dd></div>
-                <div><dt>Когорта</dt><dd>{snapshot.cohortSize} traders</dd></div>
-                <div><dt>Горизонт</dt><dd>{Math.round(snapshot.horizonMs / 3_600_000)}h</dd></div>
+                <div><dt>Уверенность</dt><dd>{pct(confidence)}</dd></div>
+                <div><dt>Зрелость модели</dt><dd>{pct(maturity)}</dd></div>
+                <div><dt>Когорта</dt><dd>{cohortSize ?? 0} traders</dd></div>
+                <div><dt>Горизонт</dt><dd>{Math.round(horizonMs / 3_600_000)}h</dd></div>
               </dl>
               <label className="intelligence-intent" htmlFor="intelligence-intent">
                 <span>Цель рекомендации</span>
@@ -143,16 +166,16 @@ export default function IntelligencePanel({
             </div>
 
             <div className="intelligence-signal-grid">
-              <div><span>Market</span><strong>{pct(snapshot.marketSignal)}</strong></div>
-              <div><span>Wallet</span><strong>{pct(snapshot.walletSignal)}</strong></div>
-              <div><span>Combined</span><strong>{pct(snapshot.combinedSignal)}</strong></div>
-              <div><span>Regime</span><strong>{snapshot.regime}</strong></div>
+              <div><span>Market</span><strong>{pct(snapshot?.marketSignal ?? lockedTargetProbability)}</strong></div>
+              <div><span>Wallet</span><strong>{pct(snapshot?.walletSignal ?? lockedTargetProbability)}</strong></div>
+              <div><span>Combined</span><strong>{pct(snapshot?.combinedSignal ?? lockedTargetProbability)}</strong></div>
+              <div><span>Regime</span><strong>{tradeSnapshot?.regime ?? snapshot?.regime}</strong></div>
             </div>
 
             <details className="intelligence-details">
               <summary>Почему система выбрала направление</summary>
               <ul>
-                {snapshot.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                {reasons.map((reason) => <li key={reason}>{reason}</li>)}
               </ul>
               <small>
                 Только аналитика: сделки не исполняются, комиссии и спред не учитываются.
