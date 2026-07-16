@@ -475,6 +475,40 @@ export function createIntelligenceDatabase({
       complete, history_truncated, reconstructed_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const saveScoreStatement = database.prepare(`
+    INSERT INTO wallet_scores (
+      address, calculated_at, episode_count, win_rate, wilson_lower,
+      profit_factor, sharpe, ewma_quality, anti_luck, long_quality,
+      short_quality, overall_score
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(address) DO UPDATE SET
+      calculated_at = excluded.calculated_at,
+      episode_count = excluded.episode_count,
+      win_rate = excluded.win_rate,
+      wilson_lower = excluded.wilson_lower,
+      profit_factor = excluded.profit_factor,
+      sharpe = excluded.sharpe,
+      ewma_quality = excluded.ewma_quality,
+      anti_luck = excluded.anti_luck,
+      long_quality = excluded.long_quality,
+      short_quality = excluded.short_quality,
+      overall_score = excluded.overall_score
+  `);
+  const insertCohortMembership = database.prepare(`
+    INSERT INTO cohort_memberships (
+      address, cohort, score, started_at, ended_at, reason
+    ) VALUES (?, ?, ?, ?, NULL, ?)
+  `);
+  const updateCohortMembership = database.prepare(`
+    UPDATE cohort_memberships
+      SET score = ?, reason = ?
+      WHERE id = ?
+  `);
+  const endCohortMembership = database.prepare(`
+    UPDATE cohort_memberships
+      SET ended_at = ?
+      WHERE id = ? AND ended_at IS NULL
+  `);
 
   const ensureWallet = (address, {
     at,
@@ -952,6 +986,146 @@ export function createIntelligenceDatabase({
         targetBand: row.target_band,
         complete: toBoolean(row.complete),
         historyTruncated: toBoolean(row.history_truncated),
+      }));
+    },
+
+    saveWalletScore(address, score) {
+      const normalized = normalizeAddress(address);
+      if (!selectWallet.get(normalized)) throw new Error('Wallet does not exist.');
+      const required = [
+        'calculatedAt',
+        'episodeCount',
+        'winRate',
+        'wilsonLower',
+        'profitFactor',
+        'sharpe',
+        'ewmaQuality',
+        'antiLuck',
+        'longQuality',
+        'shortQuality',
+        'overallScore',
+      ];
+      if (
+        !score ||
+        required.some((key) => !isFiniteNumber(score[key])) ||
+        !Number.isSafeInteger(score.calculatedAt) ||
+        !Number.isInteger(score.episodeCount) ||
+        score.episodeCount < 0
+      ) {
+        throw new Error('Wallet score is invalid.');
+      }
+      saveScoreStatement.run(
+        normalized,
+        score.calculatedAt,
+        score.episodeCount,
+        score.winRate,
+        score.wilsonLower,
+        score.profitFactor,
+        score.sharpe,
+        score.ewmaQuality,
+        score.antiLuck,
+        score.longQuality,
+        score.shortQuality,
+        score.overallScore,
+      );
+    },
+
+    getWalletScore(address) {
+      const normalized = normalizeAddress(address);
+      const row = database.prepare(
+        'SELECT * FROM wallet_scores WHERE address = ?',
+      ).get(normalized);
+      if (!row) return null;
+      return {
+        address: row.address,
+        calculatedAt: row.calculated_at,
+        episodeCount: row.episode_count,
+        winRate: row.win_rate,
+        wilsonLower: row.wilson_lower,
+        profitFactor: row.profit_factor,
+        sharpe: row.sharpe,
+        ewmaQuality: row.ewma_quality,
+        antiLuck: row.anti_luck,
+        longQuality: row.long_quality,
+        shortQuality: row.short_quality,
+        overallScore: row.overall_score,
+      };
+    },
+
+    replaceCohortMemberships(address, memberships, { at = now() } = {}) {
+      const normalized = normalizeAddress(address);
+      if (!selectWallet.get(normalized)) throw new Error('Wallet does not exist.');
+      if (
+        !Array.isArray(memberships) ||
+        memberships.length > 100 ||
+        !Number.isSafeInteger(at) ||
+        at <= 0
+      ) {
+        throw new Error('Cohort membership update is invalid.');
+      }
+      const desired = new Map();
+      for (const membership of memberships) {
+        if (
+          !/^[A-Z0-9_]{2,64}$/.test(membership?.cohort ?? '') ||
+          !isFiniteNumber(membership.score) ||
+          membership.score < 0 ||
+          membership.score > 1 ||
+          typeof membership.reason !== 'string' ||
+          membership.reason.length < 1 ||
+          membership.reason.length > 240
+        ) {
+          throw new Error('Cohort membership is invalid.');
+        }
+        desired.set(membership.cohort, membership);
+      }
+
+      return withTransaction(database, () => {
+        const currentRows = database.prepare(`
+          SELECT * FROM cohort_memberships
+          WHERE address = ? AND ended_at IS NULL
+        `).all(normalized);
+        const current = new Map(currentRows.map((row) => [row.cohort, row]));
+        let changed = 0;
+        for (const [cohort, row] of current) {
+          if (desired.has(cohort)) continue;
+          changed += Number(endCohortMembership.run(at, row.id).changes);
+        }
+        for (const [cohort, membership] of desired) {
+          const existing = current.get(cohort);
+          if (existing) {
+            changed += Number(updateCohortMembership.run(
+              membership.score,
+              membership.reason,
+              existing.id,
+            ).changes);
+          } else {
+            changed += Number(insertCohortMembership.run(
+              normalized,
+              cohort,
+              membership.score,
+              at,
+              membership.reason,
+            ).changes);
+          }
+        }
+        return changed;
+      });
+    },
+
+    listCohortMemberships(address, { activeOnly = true } = {}) {
+      const normalized = normalizeAddress(address);
+      return database.prepare(`
+        SELECT cohort, score, started_at, ended_at, reason
+        FROM cohort_memberships
+        WHERE address = ?
+          AND (? = 0 OR ended_at IS NULL)
+        ORDER BY cohort ASC, started_at ASC
+      `).all(normalized, activeOnly ? 1 : 0).map((row) => ({
+        cohort: row.cohort,
+        score: row.score,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        reason: row.reason,
       }));
     },
 
