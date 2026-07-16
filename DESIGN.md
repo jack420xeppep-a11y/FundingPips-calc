@@ -16,6 +16,12 @@ Precise enough to trust, fast enough to use during execution. The interface shou
 
 **Linear Precision Fintech / Data-Dense Executive.** Exact grid alignment, restrained rectangular geometry, tabular numbers, compact controls, and one blue system accent. Platform identity is communicated by structural color bands: Bybit uses cobalt-blue, FundingPips uses amber. Profit and loss remain semantic green and red and never double as platform identity.
 
+Calm Sentiment v2 extends this direction as a **measured risk brief**, not a
+live-tick terminal. The signature detail is one horizontal signed-pressure
+axis shared by Market, Whales, and Combined. It moves only on published
+15-second aggregates; state changes remain textual and never flash on every
+quote.
+
 ## Reference extraction
 
 - Preserve the selected reference's light canvas grid, hairlines, oversized lot values, and compact mono labels.
@@ -76,8 +82,16 @@ Dark theme deliberately avoids near-black:
 - Intelligence strip: one compact gold-only decision layer adjacent to the
   direction control. It shows paired price-path probabilities, confidence,
   freshness, and model maturity without exposing wallet identities.
-- AUTO states: `OFF`, `WARMING`, `LIVE`, `NO EDGE`, `STALE`, `DEGRADED`,
-  `LOCKED`. Every state has text and iconography; color is supplementary.
+- Calm Sentiment brief: stable decision first, then DOWN/UP/NEITHER, followed
+  by three signed pressure rows for Market, Whales, and Combined.
+- Whale detail is aggregate-only: qualified count, new positions 15m, net
+  position changes, weighted entry cluster, conviction, and freshness.
+- Decision timing is explicit: state, `STABLE FOR`, and `NEXT SWITCH EARLIEST`.
+- AUTO states: `OFF`, `WARMING`, `WATCH`, `CONFIRMED`, `COOLDOWN`, `STALE`,
+  `SYNCING`, `LOCKED`, `EXPIRED`. Every state has text and iconography; color
+  is supplementary.
+- Frozen trade state includes separate `LOCKED ENTRY` and `MARKET NOW`; the
+  ticket and execution panels never mutate while locked.
 
 ## Responsive strategy
 
@@ -86,8 +100,9 @@ Dark theme deliberately avoids near-black:
 - 320–767px: one-column reading order, two-column compact inputs where labels allow, stacked platform legs, sticky view tabs, horizontally scrollable data tables with an explicit label.
 - Mobile result order: inputs → exposure → Bybit leg → FundingPips leg → settings → scenarios.
 - Mobile intelligence order: compact AUTO switch → recommendation/path
-  probability → execution legs. Detailed model reasons move into the existing
-  advanced drawer.
+  probability → combined pressure → execution legs. Whale diagnostics,
+  component detail, timing, and reasons move into the existing advanced
+  drawer.
 - All touch targets are at least 44px; no page-level horizontal overflow.
 
 ## Accessibility
@@ -120,3 +135,7 @@ Dark theme deliberately avoids near-black:
   are verified in both themes.
 - Intelligence keeps manual calculation functional if either upstream or the
   model is unavailable.
+- Primary decision does not update for sub-3-point probability movement.
+- Wallet warming is shown as text, never a fabricated neutral percentage.
+- Frozen snapshot survives reload/theme/view changes and remains explicitly
+  expired until the user unlocks it.

@@ -20,6 +20,9 @@ case "$command" in
   calcpro-intelligence-status)
     exec sudo -n /usr/bin/systemctl is-active calcpro-gold-intelligence.service
     ;;
+  calcpro-intelligence-preflight)
+    exec sudo -n /usr/local/sbin/calcpro-intelligence-preflight
+    ;;
   rsync\ --server\ *" $static_destination"|rsync\ --server\ *" $relay_destination"|rsync\ --server\ *" $intelligence_destination")
     case "$command" in
       *--sender*|*'..'*)

@@ -97,8 +97,14 @@ SSH-ключом без общего root-доступа.
   `ops/calcpro-gold-intelligence.service`.
 - Данные HyperGold живут в `/var/lib/calcpro-intelligence`, вне release-каталога;
   deploy их не удаляет.
+- Перед каждым intelligence deploy restricted preflight проверяет минимум 1 GiB
+  свободного места и `PRAGMA quick_check`, затем создаёт SQLite `.backup` с
+  правами `0600`; старые predeploy-копии хранятся 30 дней.
 - Deploy key может обновлять только три CalcPro-каталога и перезапускать два
   CalcPro-сервиса.
+- Aggregate health публикует только безопасные счётчики raw/sentiment/decision
+  cadence, распределение устойчивых состояний, cooldown/emergency counts,
+  maturity, freshness и decision lag — без адресов и индивидуальных позиций.
 - Rollback HyperGold v1: tag `prehypergold` указывает на последнюю production
   версию до intelligence-слоя. Обычный rollback выполняется revert-коммитом и
   push в `main`, чтобы CI/CD сохранил проверяемую историю.

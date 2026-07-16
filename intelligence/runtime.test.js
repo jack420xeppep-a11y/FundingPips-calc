@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createIntelligenceDatabase } from './database.js';
-import { createGoldIntelligenceRuntime } from './runtime.js';
+import {
+  buildStrategyContextKey,
+  createGoldIntelligenceRuntime,
+} from './runtime.js';
 
 const NOW = 1784194000000;
 
@@ -69,14 +72,44 @@ const setup = {
   intent: 'transfer-to-bybit',
 };
 
+test('strategy context identity excludes exact and smoothed market prices', () => {
+  const first = buildStrategyContextKey({
+    ...setup,
+    entryPrice: 4029,
+    decisionReferencePrice: 4028.75,
+  });
+  const second = buildStrategyContextKey({
+    ...setup,
+    entryPrice: 4030,
+    decisionReferencePrice: 4029.55,
+  });
+  assert.equal(first, second);
+  assert.notEqual(first, buildStrategyContextKey({
+    ...setup,
+    slPct: 0.3,
+  }));
+});
+
 test('runtime returns only aggregate model state and records both shadow directions', (t) => {
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });
   t.after(() => database.close());
   const recordPrediction = database.recordPrediction;
+  const listActiveWalletSignals = database.listActiveWalletSignals;
+  const listWalletPositionSamples = database.listWalletPositionSamples;
   let predictionWrites = 0;
+  let walletReads = 0;
+  let positionSampleReads = 0;
   database.recordPrediction = (prediction) => {
     predictionWrites += 1;
     return recordPrediction(prediction);
+  };
+  database.listActiveWalletSignals = (...args) => {
+    walletReads += 1;
+    return listActiveWalletSignals(...args);
+  };
+  database.listWalletPositionSamples = (...args) => {
+    positionSampleReads += 1;
+    return listWalletPositionSamples(...args);
   };
   const listeners = new Set();
   const marketStore = {
@@ -97,12 +130,25 @@ test('runtime returns only aggregate model state and records both shadow directi
   assert.equal(result.version, 1);
   assert.equal(result.market.symbol, 'xyz:GOLD');
   assert.equal(result.market.bybitSymbol, 'XAUUSD+');
+  assert.equal(result.sentiment.market.status, 'ready');
+  assert.equal(result.sentiment.market.direction, 'SHORT');
+  assert.ok(result.sentiment.market.score < 0);
+  assert.equal(result.sentiment.whale.status, 'warming');
+  assert.equal(result.sentiment.whale.score, null);
+  assert.equal(result.sentiment.combined.source, 'MARKET_ONLY');
+  assert.equal(result.walletState.weight, 0);
   assert.equal(result.economics.executionEnabled, false);
   assert.equal(JSON.stringify(result).includes('address'), false);
   assert.equal(database.listPredictions().length, 2);
   runtime.getPublicSnapshot(setup);
   assert.equal(database.listPredictions().length, 2);
   assert.equal(predictionWrites, 2);
+  assert.equal(walletReads, 1);
+  assert.equal(positionSampleReads, 1);
+  const health = runtime.getPublicHealth();
+  assert.equal(health.observability.rawEvaluations, 1);
+  assert.equal(health.observability.sentimentPublications, 1);
+  assert.equal(JSON.stringify(health.observability).includes('address'), false);
 
   let updates = 0;
   const unsubscribe = runtime.subscribe(() => {
@@ -133,11 +179,63 @@ test('runtime health is sanitized, bounded, and reports model maturity', (t) => 
 
   const health = runtime.getPublicHealth();
   assert.equal(health.status, 'live');
-  assert.equal(health.database.schemaVersion, 1);
+  assert.equal(health.database.schemaVersion, 2);
   assert.equal(health.database.rows.wallets, 0);
   assert.equal(health.model.resolvedCount, 0);
+  assert.equal(health.observability.rawEvaluations, 0);
   assert.equal(JSON.stringify(health).includes(':memory:'), false);
   assert.equal(JSON.stringify(health).includes('seed'), false);
+});
+
+test('runtime emits one atomic stable decision after two minutes of bounded evidence', (t) => {
+  let clock = NOW;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => clock });
+  t.after(() => database.close());
+  const runtime = createGoldIntelligenceRuntime({
+    database,
+    marketStore: {
+      snapshot: () => ({
+        ...marketSnapshot,
+        generatedAt: clock,
+        market: {
+          ...marketSnapshot.market,
+          priceContext: {
+            executionPrice: marketSnapshot.market.bybit.mid,
+            decisionReferencePrice: marketSnapshot.market.bybit.mid,
+            executionTimestamp: clock,
+            referenceTimestamp: clock,
+            mode: 'NORMAL',
+          },
+          hyperliquid: {
+            ...marketSnapshot.market.hyperliquid,
+            timestamp: clock,
+          },
+          bybit: {
+            ...marketSnapshot.market.bybit,
+            timestamp: clock,
+          },
+        },
+      }),
+      subscribe: () => () => {},
+    },
+    now: () => clock,
+  });
+  t.after(() => runtime.close());
+
+  let result;
+  for (let index = 0; index < 9; index += 1) {
+    result = runtime.getPublicSnapshot(setup);
+    if (index < 8) assert.equal(result.recommendation.autoEligible, false);
+    clock += 15_000;
+  }
+
+  assert.equal(result.decision.state, 'COOLDOWN_LONG');
+  assert.equal(result.decision.fpDirection, 'long');
+  assert.equal(result.recommendation.stableDirection, 'long');
+  assert.equal(result.paths.down.label, 'BB TP / FP SL');
+  assert.equal(result.paths.down.probability, result.decision.probabilities.down);
+  assert.equal(result.market.priceContext.outcomeAnchorPrice, 4035);
+  assert.equal(database.getHealth().rows.decisionHistory, 1);
 });
 
 test('runtime coalesces rapid market updates before notifying SSE subscribers', (t) => {

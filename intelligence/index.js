@@ -15,6 +15,7 @@ import {
   createHyperliquidGoldUpstream,
 } from './market-collector.js';
 import { createBybitQuoteRelayClient } from './quote-relay-client.js';
+import { createActivePositionReconciler } from './position-reconciler.js';
 import { createGoldIntelligenceRuntime } from './runtime.js';
 import {
   createGoldIntelligenceService,
@@ -158,6 +159,8 @@ export function createProductionGoldIntelligence({
   });
   const jobState = {
     observer: { status: 'idle', lastRunAt: null, lastResult: null },
+    positions: { status: 'idle', lastRunAt: null, lastResult: null },
+    requalification: { status: 'idle', lastRunAt: null, lastResult: null },
     cohorts: { status: 'idle', lastRunAt: null, lastResult: null },
     retention: { status: 'idle', lastRunAt: null, lastResult: null },
   };
@@ -181,6 +184,20 @@ export function createProductionGoldIntelligence({
     database,
     infoClient,
     logger,
+    candidateStatuses: ['DISCOVERED', 'OBSERVED', 'QUALIFIED', 'RETIRED'],
+  });
+  const positionReconciler = createActivePositionReconciler({
+    database,
+    infoClient,
+    logger,
+  });
+  const requalifier = createCandidateObserver({
+    database,
+    infoClient,
+    logger,
+    candidateStatuses: ['ACTIVE_COHORT', 'PROBATION'],
+    reviewIntervalMs: 24 * 60 * 60 * 1_000,
+    maxCandidates: 100,
   });
   const rotator = createCohortRotator({
     database,
@@ -222,6 +239,8 @@ export function createProductionGoldIntelligence({
     hyperliquidUpstream,
     quoteRelayClient,
     observer,
+    positionReconciler,
+    requalifier,
     rotator,
     runRetention: () => database.runRetention(),
     jobState,

@@ -73,6 +73,178 @@ const validCandidate = (candidate) => {
   ) <= 1e-6;
 };
 
+const validMarketSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  if (
+    !['ready', 'warming', 'stale'].includes(sentiment.status) ||
+    !['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) ||
+    (
+      sentiment.score !== null &&
+      (
+        !Number.isFinite(Number(sentiment.score)) ||
+        Number(sentiment.score) < -100 ||
+        Number(sentiment.score) > 100
+      )
+    ) ||
+    !Number.isFinite(Number(sentiment.strength)) ||
+    Number(sentiment.strength) < 0 ||
+    Number(sentiment.strength) > 100 ||
+    !Number.isFinite(Number(sentiment.generatedAt)) ||
+    !Number.isFinite(Number(sentiment.stableForMs)) ||
+    Number(sentiment.stableForMs) < 0 ||
+    !Array.isArray(sentiment.reasons) ||
+    sentiment.reasons.length > 8 ||
+    sentiment.reasons.some((reason) => typeof reason !== 'string' || reason.length > 240) ||
+    !sentiment.components ||
+    typeof sentiment.components !== 'object' ||
+    Array.isArray(sentiment.components)
+  ) {
+    return false;
+  }
+  return Object.values(sentiment.components).every((item) => (
+    item &&
+    Number.isFinite(Number(item.weight)) &&
+    Number(item.weight) >= 0 &&
+    Number(item.weight) <= 100 &&
+    Number.isFinite(Number(item.raw)) &&
+    Number(item.raw) >= -1 &&
+    Number(item.raw) <= 1 &&
+    Number.isFinite(Number(item.value)) &&
+    Math.abs(Number(item.value)) <= Number(item.weight)
+  ));
+};
+
+const validWhaleSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(sentiment.status) &&
+    ['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) &&
+    (
+      sentiment.score === null ||
+      (
+        Number.isFinite(Number(sentiment.score)) &&
+        Number(sentiment.score) >= -100 &&
+        Number(sentiment.score) <= 100
+      )
+    ) &&
+    Number.isInteger(sentiment.qualifiedCount) &&
+    sentiment.qualifiedCount >= 0 &&
+    sentiment.qualifiedCount <= 100_000 &&
+    Number.isInteger(sentiment.newPositions15m?.long) &&
+    sentiment.newPositions15m.long >= 0 &&
+    Number.isInteger(sentiment.newPositions15m?.short) &&
+    sentiment.newPositions15m.short >= 0 &&
+    ['LOW', 'MEDIUM', 'HIGH'].includes(sentiment.conviction) &&
+    Number.isFinite(Number(sentiment.maturity)) &&
+    Number(sentiment.maturity) >= 0 &&
+    Number(sentiment.maturity) <= 1 &&
+    Array.isArray(sentiment.reasons) &&
+    sentiment.reasons.length <= 8
+  );
+};
+
+const validCombinedSentiment = (sentiment) => {
+  if (!sentiment) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(sentiment.status) &&
+    ['LONG', 'SHORT', 'NEUTRAL'].includes(sentiment.direction) &&
+    (
+      sentiment.score === null ||
+      (
+        Number.isFinite(Number(sentiment.score)) &&
+        Number(sentiment.score) >= -100 &&
+        Number(sentiment.score) <= 100
+      )
+    ) &&
+    Number.isFinite(Number(sentiment.strength)) &&
+    Number(sentiment.strength) >= 0 &&
+    Number(sentiment.strength) <= 100 &&
+    ['MARKET_ONLY', 'MARKET_WHALE'].includes(sentiment.source)
+  );
+};
+
+const validWalletState = (state) => {
+  if (!state) return true;
+  return (
+    ['ready', 'warming', 'stale'].includes(state.status) &&
+    Number.isFinite(Number(state.maturity)) &&
+    Number(state.maturity) >= 0 &&
+    Number(state.maturity) <= 1 &&
+    Number.isInteger(state.qualifiedCount) &&
+    state.qualifiedCount >= 0 &&
+    Number.isFinite(Number(state.weight)) &&
+    Number(state.weight) >= 0 &&
+    Number(state.weight) <= 0.55
+  );
+};
+
+const DECISION_STATES = new Set([
+  'WARMING',
+  'NEUTRAL',
+  'WATCH_LONG',
+  'WATCH_SHORT',
+  'CONFIRMED_LONG',
+  'CONFIRMED_SHORT',
+  'COOLDOWN_LONG',
+  'COOLDOWN_SHORT',
+  'LOCKED_LONG',
+  'LOCKED_SHORT',
+  'STALE',
+]);
+
+const validDecision = (decision) => {
+  if (!decision) return true;
+  if (
+    !DECISION_STATES.has(decision.state) ||
+    ![null, 'long', 'short'].includes(decision.fpDirection) ||
+    ![null, 'LONG', 'SHORT'].includes(decision.bybitDirection) ||
+    typeof decision.autoEligible !== 'boolean' ||
+    !isProbability(decision.confidence) ||
+    !isProbability(decision.edge) ||
+    !['MARKET_ONLY', 'COMBINED'].includes(decision.source) ||
+    !Array.isArray(decision.reasons) ||
+    decision.reasons.length > 8
+  ) {
+    return false;
+  }
+  if (decision.fpDirection === null) {
+    return decision.bybitDirection === null &&
+      decision.probabilities === null &&
+      decision.paths === null &&
+      decision.autoEligible === false;
+  }
+  if (
+    decision.bybitDirection !== (decision.fpDirection === 'long' ? 'SHORT' : 'LONG') ||
+    !decision.probabilities ||
+    !isProbability(decision.probabilities.down) ||
+    !isProbability(decision.probabilities.up) ||
+    !isProbability(decision.probabilities.neither) ||
+    !validPath(decision.paths?.down) ||
+    !validPath(decision.paths?.up) ||
+    !validPath(decision.paths?.neither)
+  ) {
+    return false;
+  }
+  const sum =
+    Number(decision.probabilities.down) +
+    Number(decision.probabilities.up) +
+    Number(decision.probabilities.neither);
+  const expectedDown = decision.fpDirection === 'long'
+    ? 'BB TP / FP SL'
+    : 'BB SL / FP TP';
+  const expectedUp = decision.fpDirection === 'long'
+    ? 'BB SL / FP TP'
+    : 'BB TP / FP SL';
+  return (
+    Math.abs(sum - 1) <= 1e-6 &&
+    decision.paths.down.label === expectedDown &&
+    decision.paths.up.label === expectedUp &&
+    Math.abs(decision.paths.down.probability - decision.probabilities.down) <= 1e-6 &&
+    Math.abs(decision.paths.up.probability - decision.probabilities.up) <= 1e-6 &&
+    Math.abs(decision.paths.neither.probability - decision.probabilities.neither) <= 1e-6
+  );
+};
+
 export function parseGoldIntelligenceSnapshot(payload) {
   let snapshot;
   try {
@@ -112,6 +284,11 @@ export function parseGoldIntelligenceSnapshot(payload) {
     snapshot.reasons.some((reason) => typeof reason !== 'string' || reason.length > 240) ||
     !validCandidate(snapshot.candidates?.long) ||
     !validCandidate(snapshot.candidates?.short) ||
+    !validMarketSentiment(snapshot.sentiment?.market) ||
+    !validWhaleSentiment(snapshot.sentiment?.whale) ||
+    !validCombinedSentiment(snapshot.sentiment?.combined) ||
+    !validWalletState(snapshot.walletState) ||
+    !validDecision(snapshot.decision) ||
     snapshot.economics?.includesFeesOrSpread !== false ||
     snapshot.economics?.executionEnabled !== false ||
     snapshot.market?.symbol !== 'xyz:GOLD' ||
@@ -152,6 +329,9 @@ export function parseGoldIntelligenceSnapshot(payload) {
     reasons: [...snapshot.reasons],
     candidates: snapshot.candidates,
     economics: snapshot.economics,
+    ...(snapshot.decision ? { decision: snapshot.decision } : {}),
+    ...(snapshot.sentiment ? { sentiment: snapshot.sentiment } : {}),
+    ...(snapshot.walletState ? { walletState: snapshot.walletState } : {}),
     market: snapshot.market,
   };
 }
@@ -173,6 +353,24 @@ export function buildGoldIntelligenceQuery(setup) {
   const query = new URLSearchParams();
   for (const field of fields) query.set(field, String(setup[field]));
   return query;
+}
+
+export function buildGoldIntelligenceContextKey(setup) {
+  const fields = [
+    'instrument',
+    'slPct',
+    'rrRatio',
+    'stage',
+    'accountSize',
+    'riskPerTrade',
+    'fundedRisk',
+    'profitSplit',
+    'bybitStake',
+    'intent',
+  ];
+  return JSON.stringify(Object.fromEntries(
+    fields.map((field) => [field, setup?.[field]]),
+  ));
 }
 
 export function createGoldIntelligenceFeed({
@@ -233,4 +431,3 @@ export function createGoldIntelligenceFeed({
     },
   };
 }
-

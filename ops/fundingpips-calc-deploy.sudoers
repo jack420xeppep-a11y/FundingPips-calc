@@ -1,2 +1,2 @@
-Cmnd_Alias CALCPRO_RELAY = /usr/bin/systemctl restart calcpro-quote-relay.service, /usr/bin/systemctl is-active calcpro-quote-relay.service
-fundingpips-deploy ALL=(root) NOPASSWD: CALCPRO_RELAY
+Cmnd_Alias CALCPRO_SERVICES = /usr/bin/systemctl restart calcpro-quote-relay.service, /usr/bin/systemctl is-active calcpro-quote-relay.service, /usr/bin/systemctl restart calcpro-gold-intelligence.service, /usr/bin/systemctl is-active calcpro-gold-intelligence.service, /usr/local/sbin/calcpro-intelligence-preflight
+fundingpips-deploy ALL=(root) NOPASSWD: CALCPRO_SERVICES

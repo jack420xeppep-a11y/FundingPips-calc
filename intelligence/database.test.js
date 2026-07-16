@@ -37,24 +37,85 @@ test('database creates a strict independent schema with bounded storage tables',
 
   assert.equal(statSync(path).mode & 0o077, 0);
   const health = database.getHealth();
-  assert.equal(health.schemaVersion, 1);
+  assert.equal(health.schemaVersion, 2);
   assert.equal(health.journalMode, 'wal');
   assert.ok(health.databaseBytes > 0);
   assert.deepEqual(Object.keys(health.rows).sort(), [
     'cohortMemberships',
+    'decisionHistory',
     'episodes',
     'fills',
     'lifecycleEvents',
     'marketSamples',
     'predictions',
+    'sentimentSnapshots',
     'trades',
+    'walletPositionSamples',
     'wallets',
   ]);
 
   const schema = database.inspectSchema();
   assert.match(schema, /CREATE TABLE gold_trades/);
+  assert.match(schema, /CREATE TABLE wallet_position_samples/);
+  assert.match(schema, /CREATE TABLE sentiment_snapshots/);
+  assert.match(schema, /CREATE TABLE decision_history/);
   assert.match(schema, /STRICT/);
   assert.doesNotMatch(schema, /raw_json|payload_json/i);
+});
+
+test('position reconciliation stores additive samples and aggregate sentiment history', (t) => {
+  const clock = 1784194000000;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => clock });
+  t.after(() => database.close());
+  database.importSeeds([SEED]);
+
+  database.recordGoldPosition(SEED, {
+    side: 'SHORT',
+    size: 2.5,
+    entryPrice: 4032,
+    positionValue: 10_080,
+    unrealizedPnl: 50,
+  }, { at: clock });
+  database.recordGoldPosition(SEED, null, { at: clock + 15 * 60 * 1_000 });
+
+  assert.deepEqual(database.listWalletPositionSamples({
+    from: clock,
+    to: clock + 15 * 60 * 1_000,
+  }).map((sample) => ({
+    side: sample.side,
+    size: sample.size,
+    positionValue: sample.positionValue,
+  })), [
+    { side: 'SHORT', size: 2.5, positionValue: 10_080 },
+    { side: 'FLAT', size: 0, positionValue: 0 },
+  ]);
+
+  assert.equal(database.recordSentimentSnapshot({
+    timestamp: clock,
+    marketScore: -61,
+    whaleScore: -72,
+    combinedScore: -66,
+    direction: 'SHORT',
+    qualifiedCount: 7,
+    freshnessMs: 42_000,
+    maturity: 0.72,
+  }), 1);
+  assert.equal(database.getHealth().rows.walletPositionSamples, 2);
+  assert.equal(database.getHealth().rows.sentimentSnapshots, 1);
+
+  assert.equal(database.recordDecisionHistory({
+    strategyKey: 'a'.repeat(64),
+    emittedAt: clock,
+    state: 'COOLDOWN_SHORT',
+    fpDirection: 'short',
+    bybitDirection: 'LONG',
+    probabilities: { down: 0.2, up: 0.7, neither: 0.1 },
+    confidence: 0.72,
+    source: 'MARKET_WHALE',
+    outcomeAnchorPrice: 4035,
+    expiresAt: clock + 4 * 60 * 60 * 1_000,
+  }), 1);
+  assert.equal(database.getHealth().rows.decisionHistory, 1);
 });
 
 test('trade ingestion is idempotent and updates cheap candidate statistics', (t) => {
@@ -87,6 +148,58 @@ test('trade ingestion is idempotent and updates cheap candidate statistics', (t)
   assert.equal(seller.aggressiveCount, 1);
   assert.equal(database.getHealth().rows.trades, 2);
   assert.equal(database.getHealth().rows.lifecycleEvents, 2);
+});
+
+test('realtime gold tape updates tracked active positions between REST reconciliations', (t) => {
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => 1000 });
+  t.after(() => database.close());
+  database.importSeeds([BUYER]);
+  database.transitionWallet(BUYER, 'OBSERVED', { reason: 'test', at: 1100 });
+  database.transitionWallet(BUYER, 'QUALIFIED', { reason: 'test', at: 1200 });
+  database.transitionWallet(BUYER, 'ACTIVE_COHORT', { reason: 'test', at: 1300 });
+  database.recordGoldPosition(BUYER, {
+    side: 'SHORT',
+    size: 2,
+    entryPrice: 4030,
+    positionValue: 8060,
+    unrealizedPnl: 0,
+  }, { at: 1400 });
+
+  database.recordTrades([goldTrade({
+    timestamp: 2000,
+    size: 0.5,
+    price: 4040,
+    notional: 2020,
+  })]);
+
+  const wallet = database.getWallet(BUYER);
+  assert.equal(wallet.positionSide, 'SHORT');
+  assert.equal(wallet.positionSize, 1.5);
+  assert.equal(wallet.positionEntryPrice, 4030);
+  assert.equal(wallet.positionValue, 6060);
+  assert.equal(wallet.positionUpdatedAt, 2000);
+  assert.equal(database.listWalletPositionSamples({
+    from: 2000,
+    to: 2000,
+  })[0].side, 'SHORT');
+
+  database.recordTrades([goldTrade({
+    tid: 123456791,
+    hash: `0x${'d'.repeat(64)}`,
+    timestamp: 1900,
+    size: 1,
+    price: 4020,
+    notional: 4020,
+  })]);
+
+  const afterLateTrade = database.getWallet(BUYER);
+  assert.equal(afterLateTrade.positionSide, 'SHORT');
+  assert.equal(afterLateTrade.positionSize, 1.5);
+  assert.equal(afterLateTrade.positionUpdatedAt, 2000);
+  assert.equal(database.listWalletPositionSamples({
+    from: 1900,
+    to: 1900,
+  }).length, 0);
 });
 
 test('server-only seed import is validated, idempotent, and low confidence', (t) => {

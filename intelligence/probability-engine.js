@@ -50,16 +50,20 @@ export function buildWalletSignal({
     now - wallet.positionUpdatedAt <= 24 * HOUR_MS &&
     wallet.score?.overallScore > 0
   ));
-  if (active.length === 0) {
+  if (active.length < 3) {
     return {
       status: 'warming',
       probabilityUp: 0.5,
       probabilityDown: 0.5,
       confidence: 0,
       maturity: 0,
-      cohortSize: 0,
+      cohortSize: active.length,
       reasons: ['verified wallet cohort is still warming'],
-      diagnostics: { clusterCount: 0, totalEpisodeCount: 0 },
+      diagnostics: {
+        clusterCount: 0,
+        totalEpisodeCount: 0,
+        freshnessFactor: 0,
+      },
     };
   }
 
@@ -80,6 +84,7 @@ export function buildWalletSignal({
   let matchedTarget = 0;
   let shortVotes = 0;
   let longVotes = 0;
+  let freshnessTotal = 0;
   const expectedTarget = targetCohort(targetBand);
 
   for (const wallet of active) {
@@ -90,6 +95,7 @@ export function buildWalletSignal({
     const clusterPenalty = 1 / Math.sqrt(clusters.get(clusterKey) ?? 1);
     const ageHours = Math.max(0, now - wallet.positionUpdatedAt) / HOUR_MS;
     const recency = Math.exp(-ageHours / 12);
+    freshnessTotal += recency;
     const sideQuality = wallet.positionSide === 'LONG'
       ? wallet.score.longQuality
       : wallet.score.shortQuality;
@@ -136,7 +142,11 @@ export function buildWalletSignal({
       maturity: 0,
       cohortSize: active.length,
       reasons: ['active cohorts have insufficient matched evidence'],
-      diagnostics: { clusterCount: clusters.size, totalEpisodeCount },
+      diagnostics: {
+        clusterCount: clusters.size,
+        totalEpisodeCount,
+        freshnessFactor: 0,
+      },
     };
   }
 
@@ -149,6 +159,7 @@ export function buildWalletSignal({
   const confidence = clamp(
     Math.abs(probabilityUp - probabilityDown) * Math.min(1, totalWeight / 3),
   );
+  const freshnessFactor = clamp(freshnessTotal / active.length);
   const reasons = [
     `${shortVotes} verified traders currently hold SHORT; ${longVotes} hold LONG`,
   ];
@@ -157,7 +168,7 @@ export function buildWalletSignal({
   if (matchedTarget > 0) reasons.push(`${matchedTarget} traders match ${targetBand} target band`);
 
   return {
-    status: 'ready',
+    status: maturity >= 0.1 ? 'ready' : 'warming',
     probabilityUp: round(probabilityUp, 8),
     probabilityDown: round(probabilityDown, 8),
     confidence: round(confidence, 6),
@@ -167,6 +178,7 @@ export function buildWalletSignal({
     diagnostics: {
       clusterCount: clusters.size,
       totalEpisodeCount,
+      freshnessFactor: round(freshnessFactor, 6),
     },
   };
 }
@@ -292,8 +304,12 @@ export function buildPhaseAwareRecommendation({
   const calibrationQuality = Number.isFinite(brierScore)
     ? clamp(1 - (brierScore / 0.5), 0.25, 1)
     : 0.5;
-  const walletWeight = walletSignal.status === 'ready'
-    ? Math.min(0.6, (0.1 + (maturity * 0.5)) * calibrationQuality)
+  const walletWeight = walletSignal.status === 'ready' &&
+    walletSignal.cohortSize >= 3 &&
+    maturity >= 0.1
+    ? Math.min(0.55, 0.15 + (0.4 * maturity)) *
+      walletSignal.diagnostics.freshnessFactor *
+      calibrationQuality
     : 0;
 
   const candidates = {};

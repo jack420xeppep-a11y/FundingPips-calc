@@ -72,7 +72,11 @@ export default function PositionResult({
   result,
   rrRatio,
   instrument,
-  onTradeCopied = () => {},
+  locked = false,
+  expired = false,
+  lockedEntryPrice = null,
+  marketNowPrice = null,
+  prepareTradeCopy = () => null,
 }) {
   const [copyStatus, setCopyStatus] = useState('idle');
 
@@ -81,7 +85,7 @@ export default function PositionResult({
   }, [instrument, result]);
 
   const copyTrade = async () => {
-    const ticket = buildTradeTicket(result, instrument);
+    const ticket = prepareTradeCopy() ?? buildTradeTicket(result, instrument);
     if (!ticket) return;
 
     const copyWithFallback = () => {
@@ -112,7 +116,6 @@ export default function PositionResult({
         copyWithFallback();
       }
       setCopyStatus('copied');
-      onTradeCopied();
     } catch {
       setCopyStatus('failed');
     }
@@ -131,6 +134,20 @@ export default function PositionResult({
           </span>
         ) : null}
       </header>
+
+      {locked ? (
+        <div className={`trade-lock-context ${expired ? 'is-expired' : ''}`} role="status">
+          <span>
+            {expired ? 'FROZEN SNAPSHOT · EXPIRED' : 'FROZEN SNAPSHOT · ACTIVE'}
+          </span>
+          <strong>
+            LOCKED {formatPrice(lockedEntryPrice, result.decimals)}
+          </strong>
+          <span>
+            MARKET NOW {formatPrice(marketNowPrice, result.decimals)}
+          </span>
+        </div>
+      ) : null}
 
       {result.status === 'invalid' ? (
         <div className="inline-alert" role="alert">

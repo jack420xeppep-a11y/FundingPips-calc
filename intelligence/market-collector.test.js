@@ -230,11 +230,56 @@ test('market store deduplicates trades, bounds memory, and calculates rolling fe
   assert.equal(snapshot.market.bybit.mid, 4035);
   assert.ok(snapshot.market.basisBps > 1.2 && snapshot.market.basisBps < 1.3);
   assert.equal(snapshot.features.bookImbalance, 0.5);
+  assert.equal(snapshot.features.bookImbalanceEma, 0.5);
   assert.ok(snapshot.features.aggressiveFlow5m > 0);
+  assert.equal(snapshot.features.openInterestChange5mPct, null);
+  assert.equal(snapshot.features.openInterestChange15mPct, null);
   assert.equal(snapshot.diagnostics.recentTradeCount, 2);
 
   clock += 10_001;
   assert.equal(store.snapshot().status, 'stale');
+});
+
+test('market store exposes time-based OI baselines and smooths book pressure', () => {
+  let clock = 1784194000000;
+  const store = createGoldMarketStore({
+    now: () => clock,
+    staleAfterMs: 120_000,
+  });
+
+  const applyContext = (openInterest) => store.applyHyperliquid({
+    type: 'context',
+    funding: 0,
+    openInterest,
+    premium: 0,
+    oraclePrice: 4_000,
+    markPrice: 4_000,
+    midPrice: 4_000,
+    dayNotionalVolume: 1_000_000,
+  });
+  const applyBook = (imbalance) => store.applyHyperliquid({
+    type: 'book',
+    timestamp: clock,
+    bid: 3_999,
+    ask: 4_001,
+    bidDepth: imbalance > 0 ? 9 : 1,
+    askDepth: imbalance > 0 ? 1 : 9,
+    imbalance,
+  });
+
+  applyContext(100);
+  applyBook(0.8);
+  clock += 5 * 60 * 1_000;
+  applyContext(110);
+  applyBook(-0.8);
+  clock += 10 * 60 * 1_000;
+  applyContext(121);
+
+  const snapshot = store.snapshot();
+  assert.equal(snapshot.features.openInterestChange5mPct, 10);
+  assert.equal(snapshot.features.openInterestChange15mPct, 21);
+  assert.ok(snapshot.features.bookImbalanceEma > -0.8);
+  assert.ok(snapshot.features.bookImbalanceEma < 0.8);
 });
 
 test('quote relay client accepts only fresh XAUUSD+ snapshots and parses SSE frames', () => {

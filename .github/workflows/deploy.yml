@@ -88,6 +88,8 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" calcpro-intelligence-preflight
           rsync -az --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
             release/dist/ "$DEPLOY_USER@$DEPLOY_HOST:/var/www/fundingpips-calc/"
@@ -132,7 +134,7 @@ jobs:
             intelligence="$(curl --fail --silent --show-error \
               https://farmcalc.duckdns.org/api/intelligence/health || true)"
             if printf '%s' "$intelligence" | grep -Eq '"status":"(live|stale|warming)"' && \
-              printf '%s' "$intelligence" | grep -q '"schemaVersion":1'; then
+              printf '%s' "$intelligence" | grep -q '"schemaVersion":2'; then
               intelligence_ok=true
               break
             fi

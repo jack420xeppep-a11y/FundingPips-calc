@@ -34,6 +34,33 @@ The intelligence layer never places an order and never uses a private key.
 - Baseline: 33 tests passed, production build passed, operations validation
   passed, dependency audit reported zero vulnerabilities.
 
+## Calm Sentiment v2 checkpoint
+
+The second production-safe checkpoint was created before changing the current
+HyperGold behavior:
+
+- Commit: `023c85ddf2c5ebe052b078539fe7c14a4db483fc`
+- Tag: `precalm-sentiment`
+- Workflow:
+  `https://github.com/jack420xeppep-a11y/FundingPips-calc/actions/runs/29498094198`
+- Baseline: 99 tests, build, operations contracts, dependency audit,
+  actionlint, and real production Chrome smoke passed.
+- Production intelligence and quote relay both reported `live` after the
+  checkpoint deployment.
+
+The Calm Sentiment architecture, compatibility contract, and rollback rules
+are defined in `docs/hypergold/CALM_SENTIMENT_V2.md`.
+
+Implementation status:
+
+- execution/decision/outcome prices separated;
+- bounded market and aggregate whale sentiment implemented;
+- durable 15-second decision state machine implemented;
+- complete versioned frozen trade snapshots implemented;
+- Calm Sentiment desktop/mobile UI implemented and Chrome-smoked;
+- additive schema v2, predeploy SQLite backup, integrity, disk, retention, and
+  aggregate observability gates implemented.
+
 ## Architecture boundary
 
 ```text
@@ -221,4 +248,3 @@ The following must never be returned:
   database size, clean service logs, and no secret exposure.
 - Final merge to `main` is explicit and the deploy is verified in a real
   production browser before completion is declared.
-

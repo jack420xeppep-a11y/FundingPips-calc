@@ -121,7 +121,11 @@ test('wallet signal stays neutral when no verified active cohort exists', () => 
     maturity: 0,
     cohortSize: 0,
     reasons: ['verified wallet cohort is still warming'],
-    diagnostics: { clusterCount: 0, totalEpisodeCount: 0 },
+    diagnostics: {
+      clusterCount: 0,
+      totalEpisodeCount: 0,
+      freshnessFactor: 0,
+    },
   });
 });
 

@@ -2,12 +2,14 @@ import {
   classifyWalletBehaviour,
   reconstructTradingEpisodes,
 } from './episodes.js';
+import { WALLET_STATUSES } from './database.js';
 
 const HOUR_MS = 60 * 60 * 1_000;
 const DAY_MS = 24 * HOUR_MS;
 const DEFAULT_REVIEW_INTERVAL_MS = HOUR_MS;
 const DEFAULT_FAILURE_RETRY_MS = 15 * 60 * 1_000;
 const DEFAULT_LOOKBACK_MS = 90 * DAY_MS;
+const WALLET_STATUS_SET = new Set(WALLET_STATUSES);
 
 const coefficientOfVariation = (candidate) => {
   if (
@@ -73,6 +75,14 @@ export function createCandidateObserver({
   reviewIntervalMs = DEFAULT_REVIEW_INTERVAL_MS,
   failureRetryMs = DEFAULT_FAILURE_RETRY_MS,
   lookbackMs = DEFAULT_LOOKBACK_MS,
+  candidateStatuses = [
+    'DISCOVERED',
+    'OBSERVED',
+    'QUALIFIED',
+    'ACTIVE_COHORT',
+    'PROBATION',
+    'RETIRED',
+  ],
 } = {}) {
   if (
     !database?.listCandidates ||
@@ -82,6 +92,15 @@ export function createCandidateObserver({
     !infoClient?.fetchGoldPosition
   ) {
     throw new Error('Candidate observer dependencies are incomplete.');
+  }
+  if (
+    !Array.isArray(candidateStatuses) ||
+    candidateStatuses.length < 1 ||
+    candidateStatuses.length > WALLET_STATUSES.length ||
+    new Set(candidateStatuses).size !== candidateStatuses.length ||
+    candidateStatuses.some((status) => !WALLET_STATUS_SET.has(status))
+  ) {
+    throw new Error('Candidate observer statuses are invalid.');
   }
   if (!Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 100) {
     throw new Error('maxCandidates must be between 1 and 100.');
@@ -126,14 +145,7 @@ export function createCandidateObserver({
 
       try {
         const candidates = database.listCandidates({
-          statuses: [
-            'DISCOVERED',
-            'OBSERVED',
-            'QUALIFIED',
-            'ACTIVE_COHORT',
-            'PROBATION',
-            'RETIRED',
-          ],
+          statuses: candidateStatuses,
           reviewBefore: at,
           limit: maxCandidates,
         });

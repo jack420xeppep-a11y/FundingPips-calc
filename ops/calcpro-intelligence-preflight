@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+
+state_dir='/var/lib/calcpro-intelligence'
+database="$state_dir/hypergold.sqlite"
+backup_dir="$state_dir/backups"
+minimum_available_kb=1048576
+
+test -d "$state_dir"
+test -f "$database"
+
+available_kb=$(/usr/bin/df -Pk "$state_dir" | /usr/bin/awk 'NR == 2 { print $4 }')
+case "$available_kb" in
+  ''|*[!0-9]*)
+    echo 'CalcPro intelligence preflight: disk check failed.' >&2
+    exit 1
+    ;;
+esac
+if [ "$available_kb" -lt "$minimum_available_kb" ]; then
+  echo 'CalcPro intelligence preflight: less than 1 GiB free.' >&2
+  exit 1
+fi
+
+integrity=$(/usr/bin/sqlite3 "$database" 'PRAGMA quick_check;')
+if [ "$integrity" != 'ok' ]; then
+  echo 'CalcPro intelligence preflight: SQLite integrity check failed.' >&2
+  exit 1
+fi
+
+/usr/bin/install -d -m 0700 -o fundingpips-deploy -g fundingpips-deploy "$backup_dir"
+timestamp=$(/usr/bin/date -u '+%Y%m%dT%H%M%SZ')
+backup="$backup_dir/hypergold-predeploy-$timestamp.sqlite"
+/usr/bin/sqlite3 "$database" ".backup '$backup'"
+/usr/bin/chown fundingpips-deploy:fundingpips-deploy "$backup"
+/usr/bin/chmod 0600 "$backup"
+/usr/bin/find "$backup_dir" -type f -name 'hypergold-predeploy-*.sqlite' -mtime +30 -delete
+
+printf '{"status":"ok","backup":"%s","availableKb":%s}\n' \
+  "$(/usr/bin/basename "$backup")" "$available_kb"

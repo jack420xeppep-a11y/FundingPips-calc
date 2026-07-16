@@ -71,6 +71,35 @@ test('cheap screen promotes promising seeds and excludes periodic high-frequency
   }).decision, 'wait');
 });
 
+test('candidate observer rejects duplicate and unknown lifecycle statuses', () => {
+  const dependencies = {
+    database: {
+      listCandidates() {},
+      setWalletReview() {},
+      getLatestFillTimestamp() {},
+    },
+    infoClient: {
+      fetchUserGoldFills() {},
+      fetchGoldPosition() {},
+    },
+  };
+
+  assert.throws(
+    () => createCandidateObserver({
+      ...dependencies,
+      candidateStatuses: ['DISCOVERED', 'DISCOVERED'],
+    }),
+    /statuses are invalid/,
+  );
+  assert.throws(
+    () => createCandidateObserver({
+      ...dependencies,
+      candidateStatuses: ['DISCOVERED', 'UNKNOWN'],
+    }),
+    /statuses are invalid/,
+  );
+});
+
 test('candidate observer backfills, reconstructs, classifies, and records xyz position', async (t) => {
   const hour = 60 * 60 * 1000;
   const now = 100 * hour;
