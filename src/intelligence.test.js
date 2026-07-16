@@ -135,6 +135,29 @@ const snapshot = {
     weight: 0.32,
     freshnessMs: 42000,
   },
+  decision: {
+    state: 'COOLDOWN_LONG',
+    fpDirection: 'long',
+    bybitDirection: 'SHORT',
+    autoEligible: true,
+    probabilities: { down: 0.64, up: 0.27, neither: 0.09 },
+    paths: {
+      down: { probability: 0.64, label: 'BB TP / FP SL' },
+      up: { probability: 0.27, label: 'BB SL / FP TP' },
+      neither: { probability: 0.09, label: 'No barrier inside horizon' },
+    },
+    confidence: 0.71,
+    edge: 0.37,
+    source: 'COMBINED',
+    stableSince: 1784193880000,
+    nextSwitchAllowedAt: 1784194480000,
+    generatedAt: 1784194000000,
+    decisionReferencePrice: 4034.5,
+    outcomeAnchorPrice: 4035,
+    sentiment: null,
+    reasons: ['bounded stable evidence'],
+    freshnessMs: 0,
+  },
 };
 
 test('frontend validates the aggregate intelligence contract', () => {
@@ -145,6 +168,7 @@ test('frontend validates the aggregate intelligence contract', () => {
   assert.equal(parsed.sentiment.market.score, -66);
   assert.equal(parsed.sentiment.whale.qualifiedCount, 7);
   assert.equal(parsed.sentiment.combined.source, 'MARKET_WHALE');
+  assert.equal(parsed.decision.state, 'COOLDOWN_LONG');
 
   assert.equal(parseGoldIntelligenceSnapshot({
     ...snapshot,
@@ -167,6 +191,19 @@ test('frontend validates the aggregate intelligence contract', () => {
       market: {
         ...snapshot.sentiment.market,
         score: -166,
+      },
+    },
+  }), null);
+  assert.equal(parseGoldIntelligenceSnapshot({
+    ...snapshot,
+    decision: {
+      ...snapshot.decision,
+      paths: {
+        ...snapshot.decision.paths,
+        down: {
+          ...snapshot.decision.paths.down,
+          label: 'BB SL / FP TP',
+        },
       },
     },
   }), null);

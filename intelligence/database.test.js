@@ -102,6 +102,20 @@ test('position reconciliation stores additive samples and aggregate sentiment hi
   }), 1);
   assert.equal(database.getHealth().rows.walletPositionSamples, 2);
   assert.equal(database.getHealth().rows.sentimentSnapshots, 1);
+
+  assert.equal(database.recordDecisionHistory({
+    strategyKey: 'a'.repeat(64),
+    emittedAt: clock,
+    state: 'COOLDOWN_SHORT',
+    fpDirection: 'short',
+    bybitDirection: 'LONG',
+    probabilities: { down: 0.2, up: 0.7, neither: 0.1 },
+    confidence: 0.72,
+    source: 'MARKET_WHALE',
+    outcomeAnchorPrice: 4035,
+    expiresAt: clock + 4 * 60 * 60 * 1_000,
+  }), 1);
+  assert.equal(database.getHealth().rows.decisionHistory, 1);
 });
 
 test('trade ingestion is idempotent and updates cheap candidate statistics', (t) => {

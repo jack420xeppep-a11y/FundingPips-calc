@@ -1,15 +1,14 @@
 import { createHash } from 'node:crypto';
 
+import { createDecisionStateMachine } from './decision-state.js';
 import { buildMarketOnlyForecast, createPredictionRecord } from './market-model.js';
-import {
-  buildPhaseAwareRecommendation,
-  createRecommendationStabilizer,
-} from './probability-engine.js';
+import { buildPhaseAwareRecommendation } from './probability-engine.js';
 import { createMarketSentimentAggregator } from './sentiment.js';
 import { buildWhaleSentiment } from './whale-sentiment.js';
 
 const HORIZON_MS = 4 * 60 * 60 * 1_000;
 const HOUR_MS = 60 * 60 * 1_000;
+const RAW_MODEL_INTERVAL_MS = 5_000;
 const DEFAULT_JOBS = Object.freeze({
   observer: { lastRunAt: null, status: 'idle' },
   positions: { lastRunAt: null, status: 'idle' },
@@ -30,6 +29,22 @@ export const buildStrategyContextKey = (setup) => createHash('sha256').update(JS
   intent: setup.intent,
 })).digest('hex');
 
+const emergencyEvidenceAligned = (snapshot, fpDirection) => {
+  const move = fpDirection === 'short' ? 1 : -1;
+  const momentum = Number(snapshot.features?.momentum15mBps ?? 0);
+  const flow = Number(snapshot.features?.aggressiveFlow15m ?? 0);
+  const oiChange = Number(
+    snapshot.features?.openInterestChange15mPct ??
+    snapshot.features?.openInterestChange5mPct ??
+    0,
+  );
+  return (
+    momentum * move >= 12 &&
+    flow * move >= 0.15 &&
+    oiChange >= 0.05
+  );
+};
+
 export function createGoldIntelligenceRuntime({
   database,
   marketStore,
@@ -46,6 +61,7 @@ export function createGoldIntelligenceRuntime({
     !database?.listActiveWalletSignals ||
     !database?.listWalletPositionSamples ||
     !database?.recordSentimentSnapshot ||
+    !database?.recordDecisionHistory ||
     !marketStore?.snapshot ||
     !marketStore?.subscribe ||
     !marketSentimentAggregator?.update
@@ -66,7 +82,7 @@ export function createGoldIntelligenceRuntime({
   }
 
   const listeners = new Set();
-  const stabilizers = new Map();
+  const contexts = new Map();
   const shadowPredictionKeys = new Map();
   let broadcastTimer;
   const notifyListeners = () => {
@@ -84,24 +100,27 @@ export function createGoldIntelligenceRuntime({
   });
   let closed = false;
 
-  const getStabilizer = (key) => {
-    let entry = stabilizers.get(key);
+  const getContext = (key) => {
+    let entry = contexts.get(key);
     if (entry) {
       entry.lastUsedAt = now();
-      return entry.stabilizer;
+      return entry;
     }
-    if (stabilizers.size >= maxStabilizers) {
-      const oldest = [...stabilizers.entries()].sort(
+    if (contexts.size >= maxStabilizers) {
+      const oldest = [...contexts.entries()].sort(
         (left, right) => left[1].lastUsedAt - right[1].lastUsedAt,
       )[0];
-      if (oldest) stabilizers.delete(oldest[0]);
+      if (oldest) contexts.delete(oldest[0]);
     }
     entry = {
-      stabilizer: createRecommendationStabilizer({ now }),
+      decisionMachine: createDecisionStateMachine(),
+      rawResult: null,
+      rawAt: 0,
+      rawMarketStatus: null,
       lastUsedAt: now(),
     };
-    stabilizers.set(key, entry);
-    return entry.stabilizer;
+    contexts.set(key, entry);
+    return entry;
   };
 
   const recordShadowPredictions = (setup, result, snapshot) => {
@@ -157,18 +176,29 @@ export function createGoldIntelligenceRuntime({
       const marketSentiment = marketSentimentUpdate.sentiment;
       const wallets = database.listActiveWalletSignals();
       const modelMetrics = database.getModelMetrics();
+      const strategyKey = buildStrategyContextKey(setup);
+      const context = getContext(strategyKey);
       const decisionReferencePrice =
         snapshot.market?.priceContext?.decisionReferencePrice ??
         snapshot.market?.bybit?.mid ??
         setup.entryPrice;
-      const result = buildPhaseAwareRecommendation({
-        snapshot,
-        setup: { ...setup, entryPrice: decisionReferencePrice },
-        wallets,
-        modelMetrics,
-        intent: setup.intent,
-        horizonMs: HORIZON_MS,
-      });
+      const modelDue =
+        !context.rawResult ||
+        snapshot.generatedAt - context.rawAt >= RAW_MODEL_INTERVAL_MS ||
+        context.rawMarketStatus !== snapshot.status;
+      if (modelDue) {
+        context.rawResult = buildPhaseAwareRecommendation({
+          snapshot,
+          setup: { ...setup, entryPrice: decisionReferencePrice },
+          wallets,
+          modelMetrics,
+          intent: setup.intent,
+          horizonMs: HORIZON_MS,
+        });
+        context.rawAt = snapshot.generatedAt;
+        context.rawMarketStatus = snapshot.status;
+      }
+      const result = context.rawResult;
       const positionSamples = database.listWalletPositionSamples({
         from: Math.max(1, snapshot.generatedAt - HOUR_MS),
         to: snapshot.generatedAt,
@@ -226,8 +256,64 @@ export function createGoldIntelligenceRuntime({
           maturity: result.maturity,
         });
       }
-      recordShadowPredictions(setup, result, snapshot);
-      const stability = getStabilizer(buildStrategyContextKey(setup)).update(result);
+      if (modelDue) recordShadowPredictions(setup, result, snapshot);
+      const priceContext = {
+        executionPrice: snapshot.market?.bybit?.mid ?? null,
+        decisionReferencePrice,
+        executionTimestamp: snapshot.market?.bybit?.timestamp ?? null,
+        referenceTimestamp:
+          snapshot.market?.priceContext?.referenceTimestamp ?? null,
+        mode: snapshot.market?.priceContext?.mode ?? 'WARMING',
+      };
+      const decisionUpdate = context.decisionMachine.update({
+        timestamp: snapshot.generatedAt,
+        status: result.status === 'stale' || snapshot.status === 'stale'
+          ? 'stale'
+          : result.status === 'ready'
+            ? 'ready'
+            : 'warming',
+        maturity: result.maturity,
+        confidence: result.confidence,
+        recommendation: result.recommendation.fpDirection,
+        candidates: result.candidates,
+        sentiment: {
+          market: marketSentiment,
+          whale: whaleSentiment,
+          combined: combinedSentiment,
+        },
+        priceContext,
+        reasons: [
+          ...result.reasons,
+          ...marketSentiment.reasons,
+          ...whaleSentiment.reasons,
+        ].slice(0, 8),
+        walletReady: whaleSentiment.status === 'ready',
+        emergencyAligned: emergencyEvidenceAligned(
+          snapshot,
+          result.recommendation.fpDirection,
+        ),
+      });
+      const decision = decisionUpdate.decision;
+      if (
+        decisionUpdate.published &&
+        decision.autoEligible &&
+        decision.outcomeAnchorPrice
+      ) {
+        database.recordDecisionHistory({
+          strategyKey,
+          emittedAt: decision.generatedAt,
+          state: decision.state,
+          fpDirection: decision.fpDirection,
+          bybitDirection: decision.bybitDirection,
+          probabilities: decision.probabilities,
+          confidence: decision.confidence,
+          source: decision.source,
+          outcomeAnchorPrice: decision.outcomeAnchorPrice,
+          expiresAt: decision.generatedAt + HORIZON_MS,
+        });
+      }
+      const publicDirection = decision.fpDirection ?? result.recommendation.fpDirection;
+      const publicBybitDirection = publicDirection === 'long' ? 'SHORT' : 'LONG';
 
       return {
         version: 1,
@@ -238,12 +324,14 @@ export function createGoldIntelligenceRuntime({
         regime: result.regime,
         targetBand: result.targetBand,
         recommendation: {
-          ...result.recommendation,
-          stableDirection: stability.direction,
-          stable: stability.stable,
-          switchAllowedAt: stability.switchAllowedAt || null,
+          fpDirection: publicDirection,
+          bybitDirection: publicBybitDirection,
+          autoEligible: decision.autoEligible,
+          stableDirection: decision.autoEligible ? decision.fpDirection : null,
+          stable: decision.autoEligible,
+          switchAllowedAt: decision.nextSwitchAllowedAt,
         },
-        paths: result.paths,
+        paths: decision.paths ?? result.paths,
         marketSignal: result.marketSignal,
         walletSignal: result.walletSignal,
         combinedSignal: result.combinedSignal,
@@ -254,6 +342,7 @@ export function createGoldIntelligenceRuntime({
         reasons: result.reasons,
         candidates: result.candidates,
         economics: result.economics,
+        decision,
         sentiment: {
           market: marketSentiment,
           whale: whaleSentiment,
@@ -276,13 +365,8 @@ export function createGoldIntelligenceRuntime({
           hyperliquidTimestamp: snapshot.market?.hyperliquid?.timestamp ?? null,
           bybitTimestamp: snapshot.market?.bybit?.timestamp ?? null,
           priceContext: {
-            executionPrice: snapshot.market?.bybit?.mid ?? null,
-            decisionReferencePrice,
-            outcomeAnchorPrice: snapshot.market?.bybit?.mid ?? null,
-            executionTimestamp: snapshot.market?.bybit?.timestamp ?? null,
-            referenceTimestamp:
-              snapshot.market?.priceContext?.referenceTimestamp ?? null,
-            mode: snapshot.market?.priceContext?.mode ?? 'WARMING',
+            ...priceContext,
+            outcomeAnchorPrice: decision.outcomeAnchorPrice,
           },
           stale: snapshot.status !== 'live',
         },
@@ -346,7 +430,7 @@ export function createGoldIntelligenceRuntime({
       broadcastTimer = undefined;
       unsubscribeMarket();
       listeners.clear();
-      stabilizers.clear();
+      contexts.clear();
       shadowPredictionKeys.clear();
     },
   };

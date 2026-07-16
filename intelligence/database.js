@@ -530,6 +530,13 @@ export function createIntelligenceDatabase({
       qualified_count, freshness_ms, maturity
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const insertDecisionHistory = database.prepare(`
+    INSERT INTO decision_history (
+      strategy_key, emitted_at, state, fp_direction, bybit_direction,
+      probability_down, probability_up, probability_neither, confidence,
+      source, outcome_anchor_price, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   const insertMarketSample = database.prepare(`
     INSERT INTO market_samples (
       timestamp, hyperliquid_mid, bybit_mid, basis_bps,
@@ -973,6 +980,50 @@ export function createIntelligenceDatabase({
         snapshot.qualifiedCount,
         snapshot.freshnessMs ?? null,
         snapshot.maturity,
+      );
+      return Number(result.changes);
+    },
+
+    recordDecisionHistory(decision) {
+      const probabilities = decision?.probabilities;
+      const total = Number(probabilities?.down) +
+        Number(probabilities?.up) +
+        Number(probabilities?.neither);
+      if (
+        !/^[0-9a-f]{64}$/.test(decision?.strategyKey ?? '') ||
+        !Number.isSafeInteger(decision.emittedAt) ||
+        decision.emittedAt <= 0 ||
+        !/^[A-Z_]{3,32}$/.test(decision.state ?? '') ||
+        !['long', 'short'].includes(decision.fpDirection) ||
+        !['LONG', 'SHORT'].includes(decision.bybitDirection) ||
+        !probabilities ||
+        ![probabilities.down, probabilities.up, probabilities.neither].every(
+          (value) => isFiniteNumber(value) && value >= 0 && value <= 1,
+        ) ||
+        Math.abs(total - 1) > 1e-6 ||
+        !isFiniteNumber(decision.confidence) ||
+        decision.confidence < 0 ||
+        decision.confidence > 1 ||
+        !/^[A-Z_]{3,32}$/.test(decision.source ?? '') ||
+        !isPositive(decision.outcomeAnchorPrice) ||
+        !Number.isSafeInteger(decision.expiresAt) ||
+        decision.expiresAt <= decision.emittedAt
+      ) {
+        throw new Error('Decision history record is invalid.');
+      }
+      const result = insertDecisionHistory.run(
+        decision.strategyKey,
+        decision.emittedAt,
+        decision.state,
+        decision.fpDirection,
+        decision.bybitDirection,
+        probabilities.down,
+        probabilities.up,
+        probabilities.neither,
+        decision.confidence,
+        decision.source,
+        decision.outcomeAnchorPrice,
+        decision.expiresAt,
       );
       return Number(result.changes);
     },

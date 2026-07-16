@@ -168,6 +168,57 @@ test('runtime health is sanitized, bounded, and reports model maturity', (t) => 
   assert.equal(JSON.stringify(health).includes('seed'), false);
 });
 
+test('runtime emits one atomic stable decision after two minutes of bounded evidence', (t) => {
+  let clock = NOW;
+  const database = createIntelligenceDatabase({ path: ':memory:', now: () => clock });
+  t.after(() => database.close());
+  const runtime = createGoldIntelligenceRuntime({
+    database,
+    marketStore: {
+      snapshot: () => ({
+        ...marketSnapshot,
+        generatedAt: clock,
+        market: {
+          ...marketSnapshot.market,
+          priceContext: {
+            executionPrice: marketSnapshot.market.bybit.mid,
+            decisionReferencePrice: marketSnapshot.market.bybit.mid,
+            executionTimestamp: clock,
+            referenceTimestamp: clock,
+            mode: 'NORMAL',
+          },
+          hyperliquid: {
+            ...marketSnapshot.market.hyperliquid,
+            timestamp: clock,
+          },
+          bybit: {
+            ...marketSnapshot.market.bybit,
+            timestamp: clock,
+          },
+        },
+      }),
+      subscribe: () => () => {},
+    },
+    now: () => clock,
+  });
+  t.after(() => runtime.close());
+
+  let result;
+  for (let index = 0; index < 9; index += 1) {
+    result = runtime.getPublicSnapshot(setup);
+    if (index < 8) assert.equal(result.recommendation.autoEligible, false);
+    clock += 15_000;
+  }
+
+  assert.equal(result.decision.state, 'COOLDOWN_LONG');
+  assert.equal(result.decision.fpDirection, 'long');
+  assert.equal(result.recommendation.stableDirection, 'long');
+  assert.equal(result.paths.down.label, 'BB TP / FP SL');
+  assert.equal(result.paths.down.probability, result.decision.probabilities.down);
+  assert.equal(result.market.priceContext.outcomeAnchorPrice, 4035);
+  assert.equal(database.getHealth().rows.decisionHistory, 1);
+});
+
 test('runtime coalesces rapid market updates before notifying SSE subscribers', (t) => {
   const database = createIntelligenceDatabase({ path: ':memory:', now: () => NOW });
   t.after(() => database.close());

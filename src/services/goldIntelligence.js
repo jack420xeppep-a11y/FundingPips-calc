@@ -178,6 +178,73 @@ const validWalletState = (state) => {
   );
 };
 
+const DECISION_STATES = new Set([
+  'WARMING',
+  'NEUTRAL',
+  'WATCH_LONG',
+  'WATCH_SHORT',
+  'CONFIRMED_LONG',
+  'CONFIRMED_SHORT',
+  'COOLDOWN_LONG',
+  'COOLDOWN_SHORT',
+  'LOCKED_LONG',
+  'LOCKED_SHORT',
+  'STALE',
+]);
+
+const validDecision = (decision) => {
+  if (!decision) return true;
+  if (
+    !DECISION_STATES.has(decision.state) ||
+    ![null, 'long', 'short'].includes(decision.fpDirection) ||
+    ![null, 'LONG', 'SHORT'].includes(decision.bybitDirection) ||
+    typeof decision.autoEligible !== 'boolean' ||
+    !isProbability(decision.confidence) ||
+    !isProbability(decision.edge) ||
+    !['MARKET_ONLY', 'COMBINED'].includes(decision.source) ||
+    !Array.isArray(decision.reasons) ||
+    decision.reasons.length > 8
+  ) {
+    return false;
+  }
+  if (decision.fpDirection === null) {
+    return decision.bybitDirection === null &&
+      decision.probabilities === null &&
+      decision.paths === null &&
+      decision.autoEligible === false;
+  }
+  if (
+    decision.bybitDirection !== (decision.fpDirection === 'long' ? 'SHORT' : 'LONG') ||
+    !decision.probabilities ||
+    !isProbability(decision.probabilities.down) ||
+    !isProbability(decision.probabilities.up) ||
+    !isProbability(decision.probabilities.neither) ||
+    !validPath(decision.paths?.down) ||
+    !validPath(decision.paths?.up) ||
+    !validPath(decision.paths?.neither)
+  ) {
+    return false;
+  }
+  const sum =
+    Number(decision.probabilities.down) +
+    Number(decision.probabilities.up) +
+    Number(decision.probabilities.neither);
+  const expectedDown = decision.fpDirection === 'long'
+    ? 'BB TP / FP SL'
+    : 'BB SL / FP TP';
+  const expectedUp = decision.fpDirection === 'long'
+    ? 'BB SL / FP TP'
+    : 'BB TP / FP SL';
+  return (
+    Math.abs(sum - 1) <= 1e-6 &&
+    decision.paths.down.label === expectedDown &&
+    decision.paths.up.label === expectedUp &&
+    Math.abs(decision.paths.down.probability - decision.probabilities.down) <= 1e-6 &&
+    Math.abs(decision.paths.up.probability - decision.probabilities.up) <= 1e-6 &&
+    Math.abs(decision.paths.neither.probability - decision.probabilities.neither) <= 1e-6
+  );
+};
+
 export function parseGoldIntelligenceSnapshot(payload) {
   let snapshot;
   try {
@@ -221,6 +288,7 @@ export function parseGoldIntelligenceSnapshot(payload) {
     !validWhaleSentiment(snapshot.sentiment?.whale) ||
     !validCombinedSentiment(snapshot.sentiment?.combined) ||
     !validWalletState(snapshot.walletState) ||
+    !validDecision(snapshot.decision) ||
     snapshot.economics?.includesFeesOrSpread !== false ||
     snapshot.economics?.executionEnabled !== false ||
     snapshot.market?.symbol !== 'xyz:GOLD' ||
@@ -261,6 +329,7 @@ export function parseGoldIntelligenceSnapshot(payload) {
     reasons: [...snapshot.reasons],
     candidates: snapshot.candidates,
     economics: snapshot.economics,
+    ...(snapshot.decision ? { decision: snapshot.decision } : {}),
     ...(snapshot.sentiment ? { sentiment: snapshot.sentiment } : {}),
     ...(snapshot.walletState ? { walletState: snapshot.walletState } : {}),
     market: snapshot.market,
