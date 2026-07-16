@@ -287,7 +287,10 @@ export default function App() {
 
   const applyStrategy = (strategy) => {
     if (strategy?.status !== 'ready') return;
-    setPositionValues((current) => ({ ...current, ...strategy.stakes }));
+    setPositionValues((current) => ({
+      ...current,
+      ...(strategy.applyValues ?? strategy.stakes),
+    }));
     setRecommendation(strategy);
   };
 

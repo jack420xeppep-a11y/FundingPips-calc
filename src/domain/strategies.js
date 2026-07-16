@@ -1,6 +1,11 @@
-import { calculateScenarios, getAccountSettings } from './calculator.js';
+import {
+  calculateScenarios,
+  getAccountSettings,
+  getLegacyAccountSettings,
+} from './calculator.js';
 
 const MONEY_STEP = 0.5;
+const STANDARD_FUNDED_PAYOUT = 8;
 
 const PRESET_META = Object.freeze({
   balanced: {
@@ -14,6 +19,10 @@ const PRESET_META = Object.freeze({
   'funded-first': {
     label: 'Funded-first',
     description: 'Меньше нагрузка на хедж и ниже требуемая цель Funded.',
+  },
+  'legacy-original': {
+    label: 'Legacy Original',
+    description: 'Исходные ставки calculator.html и выплата 5%: больше компенсация при сливе P2/Funded.',
   },
 });
 
@@ -138,8 +147,15 @@ export function calculateBreakEven(input) {
   };
 }
 
-function buildStrategy(input, id, stakes, meta = PRESET_META[id]) {
-  const nextInput = { ...input, ...stakes };
+function buildStrategy(
+  input,
+  id,
+  stakes,
+  meta = PRESET_META[id],
+  extraValues = {},
+) {
+  const applyValues = { ...stakes, ...extraValues };
+  const nextInput = { ...input, ...applyValues };
   const economics = calculateBreakEven(nextInput);
   const failureScenarios = calculateScenarios(nextInput).slice(0, 3);
 
@@ -149,9 +165,13 @@ function buildStrategy(input, id, stakes, meta = PRESET_META[id]) {
     description: meta?.description ?? '',
     status: economics.status,
     stakes,
+    applyValues,
+    fundedPayout: Number(nextInput.fundedPayout),
     safeBreakEvenPct: economics.safeBreakEvenPct,
     breakEvenPct: economics.breakEvenPct,
     phaseOneFailure: failureScenarios[0]?.total ?? null,
+    phaseTwoFailure: failureScenarios[1]?.total ?? null,
+    fundedFailure: failureScenarios[2]?.total ?? null,
     failureFloor: failureScenarios.length
       ? Math.min(...failureScenarios.map(({ total }) => total))
       : null,
@@ -175,6 +195,16 @@ function getBalancedStakes(input) {
 
 export function buildStrategyPresets(input) {
   const balanced = getBalancedStakes(input);
+  const legacyAccount = getLegacyAccountSettings(
+    input.accountPreset,
+    input.riskPerTrade,
+    input.fundedRisk,
+  );
+  const legacyOriginal = {
+    bybitP1: legacyAccount.bybitP1,
+    bybitP2: legacyAccount.bybitP2,
+    bybitFunded: legacyAccount.bybitFunded,
+  };
   const bybitFirst = {
     bybitP1: roundStake(balanced.bybitP1 * 1.4),
     bybitP2: roundStake(balanced.bybitP2 * (4 / 3)),
@@ -187,9 +217,34 @@ export function buildStrategyPresets(input) {
   };
 
   return [
-    buildStrategy(input, 'balanced', balanced),
-    buildStrategy(input, 'bybit-first', bybitFirst),
-    buildStrategy(input, 'funded-first', fundedFirst),
+    buildStrategy(
+      input,
+      'balanced',
+      balanced,
+      PRESET_META.balanced,
+      { fundedPayout: STANDARD_FUNDED_PAYOUT },
+    ),
+    buildStrategy(
+      input,
+      'bybit-first',
+      bybitFirst,
+      PRESET_META['bybit-first'],
+      { fundedPayout: STANDARD_FUNDED_PAYOUT },
+    ),
+    buildStrategy(
+      input,
+      'funded-first',
+      fundedFirst,
+      PRESET_META['funded-first'],
+      { fundedPayout: STANDARD_FUNDED_PAYOUT },
+    ),
+    buildStrategy(
+      input,
+      'legacy-original',
+      legacyOriginal,
+      PRESET_META['legacy-original'],
+      { fundedPayout: 5 },
+    ),
   ];
 }
 

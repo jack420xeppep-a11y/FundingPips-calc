@@ -50,33 +50,79 @@ test('prepared strategy comparison is calculated from the selected account', () 
   const strategies = buildStrategyPresets(baseInput);
 
   assert.deepEqual(
-    strategies.map(({ id, stakes, safeBreakEvenPct, phaseOneFailure }) => ({
+    strategies.map(({
       id,
       stakes,
+      fundedPayout,
       safeBreakEvenPct,
       phaseOneFailure,
+      phaseTwoFailure,
+      fundedFailure,
+    }) => ({
+      id,
+      stakes,
+      fundedPayout,
+      safeBreakEvenPct,
+      phaseOneFailure,
+      phaseTwoFailure,
+      fundedFailure,
     })),
     [
       {
         id: 'balanced',
         stakes: { bybitP1: 25, bybitP2: 45, bybitFunded: 45 },
+        fundedPayout: 8,
         safeBreakEvenPct: 7.96,
         phaseOneFailure: 59,
+        phaseTwoFailure: 59,
+        fundedFailure: 171.5,
       },
       {
         id: 'bybit-first',
         stakes: { bybitP1: 35, bybitP2: 60, bybitFunded: 55 },
+        fundedPayout: 8,
         safeBreakEvenPct: 14.24,
         phaseOneFailure: 109,
+        phaseTwoFailure: 94,
+        fundedFailure: 194,
       },
       {
         id: 'funded-first',
         stakes: { bybitP1: 20, bybitP2: 35, bybitFunded: 35 },
+        fundedPayout: 8,
         safeBreakEvenPct: 5.19,
         phaseOneFailure: 34,
+        phaseTwoFailure: 29,
+        fundedFailure: 116.5,
+      },
+      {
+        id: 'legacy-original',
+        stakes: { bybitP1: 25, bybitP2: 55, bybitFunded: 50 },
+        fundedPayout: 5,
+        safeBreakEvenPct: 10.12,
+        phaseOneFailure: 59,
+        phaseTwoFailure: 109,
+        fundedFailure: 196.5,
       },
     ],
   );
+
+  const legacy = strategies.find(({ id }) => id === 'legacy-original');
+  assert.deepEqual(legacy.applyValues, {
+    bybitP1: 25,
+    bybitP2: 55,
+    bybitFunded: 50,
+    fundedPayout: 5,
+  });
+  assert.equal(legacy.economics.projectedTotal, -153.5);
+
+  const balanced = strategies.find(({ id }) => id === 'balanced');
+  assert.deepEqual(balanced.applyValues, {
+    bybitP1: 25,
+    bybitP2: 45,
+    bybitFunded: 45,
+    fundedPayout: 8,
+  });
 });
 
 test('prepared strategy stakes stay on a fifty-cent step for larger accounts', () => {

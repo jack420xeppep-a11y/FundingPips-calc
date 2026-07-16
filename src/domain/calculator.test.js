@@ -6,6 +6,7 @@ import {
   calculateRecovery,
   calculateScenarios,
   getAccountSettings,
+  getLegacyAccountSettings,
 } from './calculator.js';
 
 test('account preset scales Bybit stakes from the selected risk', () => {
@@ -15,6 +16,23 @@ test('account preset scales Bybit stakes from the selected risk', () => {
     bybitP1: 31.5,
     bybitP2: 56.5,
     bybitFunded: 56.5,
+  });
+});
+
+test('legacy account preset preserves the original calculator stakes', () => {
+  assert.deepEqual(getLegacyAccountSettings('10k', 2, 1), {
+    accountSize: 10000,
+    challengeCost: 66,
+    bybitP1: 25,
+    bybitP2: 55,
+    bybitFunded: 50,
+  });
+  assert.deepEqual(getLegacyAccountSettings('25k', 1, 0.5), {
+    accountSize: 25000,
+    challengeCost: 156,
+    bybitP1: 31.5,
+    bybitP2: 69,
+    bybitFunded: 62.5,
   });
 });
 

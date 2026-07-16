@@ -5,6 +5,13 @@ export const ACCOUNTS = Object.freeze({
   '100k': { size: 100000, challenge: 529, p1: 250, p2: 450, funded: 450 },
 });
 
+export const LEGACY_ACCOUNTS = Object.freeze({
+  '10k': { size: 10000, challenge: 66, p1: 25, p2: 55, funded: 50 },
+  '25k': { size: 25000, challenge: 156, p1: 63, p2: 138, funded: 125 },
+  '50k': { size: 50000, challenge: 289, p1: 125, p2: 275, funded: 250 },
+  '100k': { size: 100000, challenge: 529, p1: 250, p2: 550, funded: 500 },
+});
+
 export const INSTRUMENTS = Object.freeze({
   EURUSD: { contract: 100000, defaultPrice: 1.1559, step: 0.00001, decimals: 5 },
   GBPUSD: { contract: 100000, defaultPrice: 1.333, step: 0.00001, decimals: 5 },
@@ -18,8 +25,13 @@ const round = (value, decimals = 2) => {
 
 const isPositive = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
 
-export function getAccountSettings(preset, riskPerTrade = 2, fundedRisk = 1) {
-  const account = ACCOUNTS[preset] ?? ACCOUNTS['10k'];
+function getScaledAccountSettings(
+  accounts,
+  preset,
+  riskPerTrade = 2,
+  fundedRisk = 1,
+) {
+  const account = accounts[preset] ?? accounts['10k'];
   const challengeRiskScale = Number(riskPerTrade) / 2;
   const fundedRiskScale = Number(fundedRisk);
 
@@ -30,6 +42,28 @@ export function getAccountSettings(preset, riskPerTrade = 2, fundedRisk = 1) {
     bybitP2: round(account.p2 * challengeRiskScale),
     bybitFunded: round(account.funded * fundedRiskScale),
   };
+}
+
+export function getAccountSettings(preset, riskPerTrade = 2, fundedRisk = 1) {
+  return getScaledAccountSettings(
+    ACCOUNTS,
+    preset,
+    riskPerTrade,
+    fundedRisk,
+  );
+}
+
+export function getLegacyAccountSettings(
+  preset,
+  riskPerTrade = 2,
+  fundedRisk = 1,
+) {
+  return getScaledAccountSettings(
+    LEGACY_ACCOUNTS,
+    preset,
+    riskPerTrade,
+    fundedRisk,
+  );
 }
 
 export function calculatePosition(input) {

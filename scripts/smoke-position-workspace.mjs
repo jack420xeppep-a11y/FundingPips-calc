@@ -195,6 +195,57 @@ try {
     breakEvenText: document.querySelector('.break-even-block').innerText,
   }))()`);
 
+  await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.strategy-table tbody tr')]
+      .find((item) => item.innerText.includes('Legacy Original'));
+    if (!row) throw new Error('Legacy Original row is missing');
+    row.querySelector('button').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#bybitP1').value === '25' &&
+      document.querySelector('#bybitP2').value === '55' &&
+      document.querySelector('#bybitFunded').value === '50' &&
+      document.querySelector('#fundedPayout').value === '5'
+    )()`);
+    if (!ready) throw new Error('Legacy Original values were not applied');
+  });
+  const legacyOriginal = await evaluate(`(() => {
+    const scenarioSection = document.querySelector('#scenario-title').closest('section');
+    const totals = [...scenarioSection.querySelectorAll('tbody tr')]
+      .map((row) => row.cells[row.cells.length - 1].innerText);
+    return {
+      p1: document.querySelector('#bybitP1').value,
+      p2: document.querySelector('#bybitP2').value,
+      funded: document.querySelector('#bybitFunded').value,
+      payout: document.querySelector('#fundedPayout').value,
+      totals,
+    };
+  })()`);
+  await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.strategy-table tbody tr')]
+      .find((item) => item.innerText.includes('Сбалансированная'));
+    if (!row) throw new Error('Balanced strategy row is missing');
+    row.querySelector('button').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#bybitP1').value === '25' &&
+      document.querySelector('#bybitP2').value === '45' &&
+      document.querySelector('#bybitFunded').value === '45' &&
+      document.querySelector('#fundedPayout').value === '8'
+    )()`);
+    if (!ready) throw new Error('Balanced values were not restored after Legacy');
+  });
+  const balancedRestored = await evaluate(`(() => ({
+    p1: document.querySelector('#bybitP1').value,
+    p2: document.querySelector('#bybitP2').value,
+    funded: document.querySelector('#bybitFunded').value,
+    payout: document.querySelector('#fundedPayout').value,
+  }))()`);
+
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
   await delay(100);
   await evaluate(`(() => {
@@ -396,6 +447,17 @@ try {
     advancedVisible &&
     optimizer.fundedStake === '28' &&
     optimizer.breakEvenText.includes('5.36%') &&
+    legacyOriginal.p1 === '25' &&
+    legacyOriginal.p2 === '55' &&
+    legacyOriginal.funded === '50' &&
+    legacyOriginal.payout === '5' &&
+    legacyOriginal.totals.some((value) => value.includes('+$109.00')) &&
+    legacyOriginal.totals.some((value) => value.includes('+$196.50')) &&
+    legacyOriginal.totals.some((value) => value.includes('−$153.50')) &&
+    balancedRestored.p1 === '25' &&
+    balancedRestored.p2 === '45' &&
+    balancedRestored.funded === '45' &&
+    balancedRestored.payout === '8' &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
@@ -434,6 +496,8 @@ try {
     copyWorked,
     advancedVisible,
     optimizer,
+    legacyOriginal,
+    balancedRestored,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,

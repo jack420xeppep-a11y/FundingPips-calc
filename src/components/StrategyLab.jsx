@@ -79,7 +79,7 @@ export default function StrategyLab({
                 type="button"
                 onClick={() => onApply(recommendation)}
               >
-                Применить ставки
+                Применить параметры
               </button>
             </div>
           ) : (
@@ -95,7 +95,7 @@ export default function StrategyLab({
               <span className="section-code">Prepared profiles</span>
               <h3 id="comparison-title">Сравнение стратегий</h3>
             </div>
-            <span>Пересчёт по текущим параметрам</span>
+            <span>Аккаунт/риск текущие · payout профиля</span>
           </div>
 
           <div className="table-scroll" tabIndex="0" aria-label="Сравнение готовых стратегий">
@@ -106,8 +106,11 @@ export default function StrategyLab({
                   <th scope="col">P1</th>
                   <th scope="col">P2</th>
                   <th scope="col">Funded</th>
+                  <th scope="col">Payout</th>
                   <th scope="col">БУ</th>
                   <th scope="col">Слив P1</th>
+                  <th scope="col">Слив P2</th>
+                  <th scope="col">Слив Funded</th>
                   <th scope="col"><span className="visually-hidden">Действие</span></th>
                 </tr>
               </thead>
@@ -121,9 +124,16 @@ export default function StrategyLab({
                     <td>{formatMoney(strategy.stakes.bybitP1, 1)}</td>
                     <td>{formatMoney(strategy.stakes.bybitP2, 1)}</td>
                     <td>{formatMoney(strategy.stakes.bybitFunded, 1)}</td>
+                    <td>{strategy.fundedPayout.toFixed(0)}%</td>
                     <td>{strategy.safeBreakEvenPct?.toFixed(2) ?? '—'}%</td>
                     <td className={strategy.phaseOneFailure >= 0 ? 'positive' : 'negative'}>
                       {formatSignedMoney(strategy.phaseOneFailure, 2)}
+                    </td>
+                    <td className={strategy.phaseTwoFailure >= 0 ? 'positive' : 'negative'}>
+                      {formatSignedMoney(strategy.phaseTwoFailure, 2)}
+                    </td>
+                    <td className={strategy.fundedFailure >= 0 ? 'positive' : 'negative'}>
+                      {formatSignedMoney(strategy.fundedFailure, 2)}
                     </td>
                     <td>
                       <button
