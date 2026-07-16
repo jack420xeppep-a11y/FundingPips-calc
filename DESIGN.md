@@ -4,7 +4,9 @@
 
 CalcPro is a focused prop-hedge position engine for a trader synchronizing a FundingPips account with an opposing Bybit leg. The primary job is to turn strategy inputs into immediately readable lot sizes, TP/SL levels, challenge outcomes, and recovery steps. The current calculator remains the source of truth for behavior; this project separates that behavior from the React presentation layer.
 
-Assumption: this is a private decision-support tool, not a public trading platform. Values update locally and no market-data or execution API is implied.
+Assumption: this is a private decision-support tool, not a public trading
+platform. Position economics remain local. Public market intelligence is
+read-only and cannot execute orders.
 
 ## Brand thesis
 
@@ -71,6 +73,11 @@ Dark theme deliberately avoids near-black:
 - Scenario ledger: full cycle outcomes with signed semantic values.
 - Recovery ladder: separate strategy inputs, table, and compact summary.
 - Validation: invalid numeric inputs produce an inline message without breaking the layout.
+- Intelligence strip: one compact gold-only decision layer adjacent to the
+  direction control. It shows paired price-path probabilities, confidence,
+  freshness, and model maturity without exposing wallet identities.
+- AUTO states: `OFF`, `WARMING`, `LIVE`, `NO EDGE`, `STALE`, `DEGRADED`,
+  `LOCKED`. Every state has text and iconography; color is supplementary.
 
 ## Responsive strategy
 
@@ -78,6 +85,9 @@ Dark theme deliberately avoids near-black:
 - 768–1023px: result full-width; settings and limits form a two-column lower deck.
 - 320–767px: one-column reading order, two-column compact inputs where labels allow, stacked platform legs, sticky view tabs, horizontally scrollable data tables with an explicit label.
 - Mobile result order: inputs → exposure → Bybit leg → FundingPips leg → settings → scenarios.
+- Mobile intelligence order: compact AUTO switch → recommendation/path
+  probability → execution legs. Detailed model reasons move into the existing
+  advanced drawer.
 - All touch targets are at least 44px; no page-level horizontal overflow.
 
 ## Accessibility
@@ -85,6 +95,8 @@ Dark theme deliberately avoids near-black:
 - One `h1`, logical headings, skip link, native controls, explicit labels, table header scopes.
 - Theme button and tabs expose current state; computed results use `aria-live="polite"`.
 - Color never acts alone: TP/SL, platform names, directions, and signs remain textual.
+- AUTO direction changes are announced politely, never steal focus, and stop
+  after the setup is copied or locked.
 - Visible focus and AA-oriented contrast in both themes.
 
 ## Forbidden patterns
@@ -93,6 +105,8 @@ Dark theme deliberately avoids near-black:
 - Identical platform panels distinguished only by text.
 - Color-only P&L meaning, hidden settings, decorative fake market data.
 - Nested rounded cards, excessive shadows, chart libraries for simple data.
+- Fake precision, hidden model freshness, public wallet lists, or automatic
+  order-execution language.
 
 ## QA checklist
 
@@ -102,4 +116,7 @@ Dark theme deliberately avoids near-black:
 - Bybit/FundingPips and TP/SL are visually and textually distinct.
 - Verify 320, 390, 768, 1024, and 1440px without horizontal page overflow.
 - Production build succeeds with no external runtime assets.
-
+- OFF/AUTO, warming, live, no-edge, stale, degraded, locked, and unlock states
+  are verified in both themes.
+- Intelligence keeps manual calculation functional if either upstream or the
+  model is unavailable.

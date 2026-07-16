@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import PositionControls from './components/PositionControls.jsx';
+import IntelligencePanel from './components/IntelligencePanel.jsx';
 import PositionResult from './components/PositionResult.jsx';
 import RecoveryView from './components/RecoveryView.jsx';
 import RiskRail from './components/RiskRail.jsx';
@@ -22,6 +23,7 @@ import {
   optimizeStrategy,
 } from './domain/strategies.js';
 import useLivePrice from './hooks/useLivePrice.js';
+import useGoldIntelligence from './hooks/useGoldIntelligence.js';
 
 const initialPosition = {
   instrument: 'GBPUSD',
@@ -106,6 +108,11 @@ export default function App() {
   const [autoPriceEnabled, setAutoPriceEnabled] = usePersistedBoolean(
     'calcpro-auto-price',
   );
+  const [intelligenceEnabled, setIntelligenceEnabled] = usePersistedBoolean(
+    'calcpro-hl-intelligence',
+  );
+  const [intelligenceIntent, setIntelligenceIntent] = useState('transfer-to-bybit');
+  const [intelligenceLocked, setIntelligenceLocked] = useState(false);
   const [theme, toggleTheme] = useTheme();
 
   const applyLivePrice = useCallback((quote) => {
@@ -131,6 +138,37 @@ export default function App() {
     [positionValues],
   );
   const recovery = useMemo(() => calculateRecovery(recoveryValues), [recoveryValues]);
+  const intelligenceAvailable = positionValues.instrument === 'XAUUSD';
+  const intelligenceSetup = useMemo(() => (
+    position.status === 'ready' && intelligenceAvailable
+      ? {
+          instrument: 'XAUUSD',
+          entryPrice: Math.round(Number(positionValues.entryPrice) * 2) / 2,
+          slPct: Number(positionValues.slPct),
+          rrRatio: Number(positionValues.rrRatio),
+          stage: positionValues.stage,
+          accountSize: Number(positionValues.accountSize),
+          riskPerTrade: Number(positionValues.riskPerTrade),
+          fundedRisk: Number(positionValues.fundedRisk),
+          profitSplit: Number(positionValues.profitSplit),
+          bybitStake: Number(position.stake),
+          intent: intelligenceIntent,
+        }
+      : null
+  ), [position, positionValues, intelligenceAvailable, intelligenceIntent]);
+
+  const applyIntelligenceDirection = useCallback((direction) => {
+    setPositionValues((current) => (
+      current.fpDirection === direction ? current : { ...current, fpDirection: direction }
+    ));
+  }, []);
+
+  const intelligence = useGoldIntelligence({
+    enabled: intelligenceEnabled && intelligenceAvailable && position.status === 'ready',
+    setup: intelligenceSetup,
+    locked: intelligenceLocked,
+    onDirection: applyIntelligenceDirection,
+  });
 
   const updatePosition = (field, value) => {
     setRecommendation(null);
@@ -259,13 +297,47 @@ export default function App() {
                 autoPriceEnabled={autoPriceEnabled}
                 onAutoPriceChange={setAutoPriceEnabled}
                 livePrice={livePrice}
+                intelligenceEnabled={intelligenceEnabled}
+                intelligenceAvailable={intelligenceAvailable}
+                onIntelligenceChange={(enabled) => {
+                  setIntelligenceEnabled(enabled);
+                  if (!enabled) setIntelligenceLocked(false);
+                }}
               />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>
                 <div className="primary-workspace">
+                  <IntelligencePanel
+                    enabled={intelligenceEnabled}
+                    available={intelligenceAvailable}
+                    state={intelligence}
+                    intent={intelligenceIntent}
+                    onIntentChange={setIntelligenceIntent}
+                    locked={intelligenceLocked}
+                    onLockToggle={() => {
+                      if (!intelligenceLocked) {
+                        setIntelligenceLocked(true);
+                        return;
+                      }
+                      setIntelligenceLocked(false);
+                      const next = intelligence.snapshot?.recommendation;
+                      if (
+                        next?.autoEligible &&
+                        next.stable &&
+                        ['long', 'short'].includes(next.stableDirection)
+                      ) {
+                        applyIntelligenceDirection(next.stableDirection);
+                      }
+                    }}
+                  />
                   <PositionResult
                     result={position}
                     rrRatio={positionValues.rrRatio}
                     instrument={positionValues.instrument}
+                    onTradeCopied={() => {
+                      if (intelligenceEnabled && intelligenceAvailable) {
+                        setIntelligenceLocked(true);
+                      }
+                    }}
                   />
                   <button
                     className="mobile-advanced-toggle"

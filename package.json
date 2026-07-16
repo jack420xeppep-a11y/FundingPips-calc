@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "relay": "node server/index.js",
+    "intelligence": "node --disable-warning=ExperimentalWarning intelligence/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test server/*.test.js src/domain/*.test.js src/*.test.js",
-    "check:ops": "sh -n ops/fundingpips-calc-deploy",
+    "test": "node --test intelligence/*.test.js ops/*.test.js server/*.test.js src/domain/*.test.js src/*.test.js",
+    "check:ops": "sh -n ops/fundingpips-calc-deploy && node --test ops/*.test.js",
     "test:browser": "node scripts/smoke-position-workspace.mjs"
   },
   "dependencies": {

@@ -7,6 +7,8 @@ const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 const profile = await mkdtemp(join(tmpdir(), 'calcpro-smoke-'));
 const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
 const screenshotPath = process.argv[3] ?? join(tmpdir(), 'calcpro-mobile-smoke.png');
+const desktopScreenshotPath = process.argv[4] ??
+  join(tmpdir(), 'calcpro-desktop-smoke.png');
 
 const chrome = spawn(chromePath, [
   '--headless=new',
@@ -223,6 +225,93 @@ try {
     status: document.querySelector('.live-price-status').innerText,
   }))()`);
 
+  await evaluate("document.querySelector('#hl-intelligence').click()");
+  await retry(async () => {
+    const ready = await evaluate(`(() => {
+      const panel = document.querySelector('.intelligence-panel');
+      return panel &&
+        panel.querySelectorAll('.intelligence-path').length === 3 &&
+        panel.innerText.includes('BB TP / FP SL') &&
+        panel.innerText.includes('BB SL / FP TP');
+    })()`);
+    if (!ready) throw new Error('HL Intelligence aggregate panel is not ready');
+  }, 300);
+  const intelligence = await evaluate(`(() => {
+    const probabilities = [...document.querySelectorAll('.intelligence-path strong')]
+      .map((node) => Number(node.innerText.replace('%', '')) / 100);
+    return {
+      enabled: document.querySelector('#hl-intelligence').checked,
+      status: document.querySelector('.intelligence-status').innerText,
+      probabilitySum: probabilities.reduce((sum, value) => sum + value, 0),
+      recommendation: document.querySelector('.intelligence-recommendation strong').innerText,
+      advancedHidden:
+        getComputedStyle(document.querySelector('.intelligence-advanced')).display === 'none',
+      noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  })()`);
+
+  await evaluate("document.querySelector('.copy-trade').click()");
+  await retry(async () => {
+    const locked = await evaluate(
+      "document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
+    );
+    const noEdge = await evaluate(
+      "document.querySelector('.intelligence-status')?.innerText.includes('NO EDGE')",
+    );
+    if (!locked && !noEdge) throw new Error('Copy did not lock HL Intelligence AUTO');
+  });
+  const lockButtonExists = await evaluate(
+    "Boolean(document.querySelector('.intelligence-lock'))",
+  );
+  if (lockButtonExists) {
+    await evaluate("document.querySelector('.intelligence-lock').click()");
+    await retry(async () => {
+      const unlocked = await evaluate(
+        "!document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
+      );
+      if (!unlocked) throw new Error('HL Intelligence unlock did not apply');
+    });
+  }
+  const intelligenceUnlocked = await evaluate(`(() => {
+    const button = document.querySelector('.intelligence-lock');
+    return button
+      ? button.innerText.includes('Зафиксировать')
+      : document.querySelector('.intelligence-recommendation')
+        .innerText.includes('MANUAL DIRECTION');
+  })()`);
+  await retry(async () => {
+    const synchronized = await evaluate(`(() => {
+      const status = document.querySelector('.intelligence-status')?.innerText ?? '';
+      const recommendation =
+        document.querySelector('.intelligence-recommendation strong')?.innerText ?? '';
+      if (status.includes('NO EDGE')) return true;
+      const expected = recommendation.includes('FP SHORT')
+        ? 'short'
+        : recommendation.includes('FP LONG')
+          ? 'long'
+          : null;
+      return expected && document.querySelector('#fpDirection').value === expected;
+    })()`);
+    if (!synchronized) throw new Error('AUTO direction did not synchronize after unlock');
+  }, 100);
+  const intelligenceDirectionSynchronized = await evaluate(`(() => {
+    const recommendation =
+      document.querySelector('.intelligence-recommendation strong')?.innerText ?? '';
+    const expected = recommendation.includes('FP SHORT')
+      ? 'short'
+      : recommendation.includes('FP LONG')
+        ? 'long'
+        : document.querySelector('#fpDirection').value;
+    return document.querySelector('#fpDirection').value === expected;
+  })()`);
+
+  const mobileScreenshot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  await writeFile(screenshotPath, Buffer.from(mobileScreenshot.data, 'base64'));
+
   await evaluate(`(() => {
     const select = document.querySelector('#instrument');
     select.value = 'EURUSD';
@@ -264,16 +353,13 @@ try {
   });
   const quoteTransport = {
     usedRelay: networkUrls.some((requestUrl) => requestUrl.includes('/api/quotes')),
+    usedIntelligenceRelay: networkUrls.some((requestUrl) =>
+      requestUrl.includes('/api/intelligence/stream')),
     openedDirectBybitSocket: networkUrls.some((requestUrl) =>
       requestUrl.includes('ws2.bybit.com/realtime_w')),
+    openedDirectHyperliquidSocket: networkUrls.some((requestUrl) =>
+      requestUrl.includes('api.hyperliquid.xyz/ws')),
   };
-
-  const screenshot = await cdp.send('Page.captureScreenshot', {
-    format: 'png',
-    captureBeyondViewport: false,
-    fromSurface: true,
-  });
-  await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
 
   await evaluate("document.querySelector('.theme-toggle').click()");
   await delay(100);
@@ -289,12 +375,33 @@ try {
     mobile: false,
   });
   await delay(150);
+  await evaluate(`(() => {
+    const select = document.querySelector('#instrument');
+    select.value = 'XAUUSD';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(
+      "Boolean(document.querySelector('.intelligence-panel .intelligence-paths'))",
+    );
+    if (!ready) throw new Error('Desktop HL Intelligence panel is not ready');
+  }, 200);
   const desktop = await evaluate(`(() => ({
     advancedVisible: getComputedStyle(document.querySelector('.advanced-content')).display !== 'none',
     riskVisible: getComputedStyle(document.querySelector('.risk-rail')).display !== 'none',
     strategyVisible: getComputedStyle(document.querySelector('.strategy-lab')).display !== 'none',
     noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
   }))()`);
+  const desktopScreenshot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  await writeFile(
+    desktopScreenshotPath,
+    Buffer.from(desktopScreenshot.data, 'base64'),
+  );
 
   const errors = cdp.events
     .filter((event) => event.method === 'Runtime.exceptionThrown' ||
@@ -319,10 +426,21 @@ try {
     goldLive.value > 3000 &&
     goldLive.readOnly &&
     goldLive.status.includes('XAUUSD+') &&
+    intelligence.enabled &&
+    intelligence.probabilitySum >= 0.98 &&
+    intelligence.probabilitySum <= 1.02 &&
+    (intelligence.recommendation.includes('FP') ||
+      intelligence.recommendation.includes('MANUAL DIRECTION')) &&
+    intelligence.advancedHidden &&
+    intelligence.noHorizontalOverflow &&
+    intelligenceUnlocked &&
+    intelligenceDirectionSynchronized &&
     euroLive > 0 &&
     poundLive > 0 &&
     quoteTransport.usedRelay &&
+    quoteTransport.usedIntelligenceRelay &&
     !quoteTransport.openedDirectBybitSocket &&
+    !quoteTransport.openedDirectHyperliquidSocket &&
     darkTheme.selected &&
     darkTheme.canvas !== 'rgb(255, 255, 255)' &&
     desktop.advancedVisible &&
@@ -339,15 +457,28 @@ try {
     optimizer,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
+    intelligence,
+    intelligenceUnlocked,
+    intelligenceDirectionSynchronized,
     quoteTransport,
     darkTheme,
     desktop,
     screenshotPath,
+    desktopScreenshotPath,
     errors,
   }, null, 2));
   process.exitCode = passed ? 0 : 1;
 } finally {
   socket?.close();
-  chrome.kill('SIGTERM');
-  await rm(profile, { recursive: true, force: true });
+  if (chrome.exitCode === null) {
+    const exited = new Promise((resolveExit) => chrome.once('exit', resolveExit));
+    chrome.kill('SIGTERM');
+    await Promise.race([exited, delay(2_000)]);
+  }
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }

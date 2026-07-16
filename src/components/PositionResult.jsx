@@ -68,7 +68,12 @@ function PlatformLeg({ kind, leg, decimals, rrRatio }) {
   );
 }
 
-export default function PositionResult({ result, rrRatio, instrument }) {
+export default function PositionResult({
+  result,
+  rrRatio,
+  instrument,
+  onTradeCopied = () => {},
+}) {
   const [copyStatus, setCopyStatus] = useState('idle');
 
   useEffect(() => {
@@ -107,6 +112,7 @@ export default function PositionResult({ result, rrRatio, instrument }) {
         copyWithFallback();
       }
       setCopyStatus('copied');
+      onTradeCopied();
     } catch {
       setCopyStatus('failed');
     }

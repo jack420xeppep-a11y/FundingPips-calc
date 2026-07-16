@@ -18,6 +18,10 @@ farmcalc.duckdns.org {
 	}
 
 	route {
+		@intelligence path /api/intelligence/*
+		reverse_proxy @intelligence 127.0.0.1:8788 {
+			flush_interval -1
+		}
 		@quoteRelay path /api/quotes /api/quote-health
 		reverse_proxy @quoteRelay 127.0.0.1:8787 {
 			flush_interval -1
