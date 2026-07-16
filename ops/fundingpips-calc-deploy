@@ -3,22 +3,27 @@
 set -eu
 
 command=${SSH_ORIGINAL_COMMAND:-}
-destination='/var/www/fundingpips-calc/'
+static_destination='/var/www/fundingpips-calc/'
+relay_destination='/opt/fundingpips-calc-relay/server/'
 
 case "$command" in
-  rsync\ --server\ *" $destination")
+  calcpro-relay-restart)
+    exec sudo -n /usr/bin/systemctl restart calcpro-quote-relay.service
+    ;;
+  calcpro-relay-status)
+    exec sudo -n /usr/bin/systemctl is-active calcpro-quote-relay.service
+    ;;
+  rsync\ --server\ *" $static_destination"|rsync\ --server\ *" $relay_destination")
+    case "$command" in
+      *--sender*|*'..'*)
+        echo 'CalcPro deploy key: read or traversal denied.' >&2
+        exit 1
+        ;;
+    esac
+    exec $command
     ;;
   *)
     echo 'CalcPro deploy key: command denied.' >&2
     exit 1
     ;;
 esac
-
-case "$command" in
-  *--sender*|*'..'*)
-    echo 'CalcPro deploy key: read or traversal denied.' >&2
-    exit 1
-    ;;
-esac
-
-exec $command

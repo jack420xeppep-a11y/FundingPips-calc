@@ -1,0 +1,2 @@
+Cmnd_Alias CALCPRO_RELAY = /usr/bin/systemctl restart calcpro-quote-relay.service, /usr/bin/systemctl is-active calcpro-quote-relay.service
+fundingpips-deploy ALL=(root) NOPASSWD: CALCPRO_RELAY

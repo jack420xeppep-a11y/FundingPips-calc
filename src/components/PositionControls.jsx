@@ -13,6 +13,7 @@ const statusCopy = {
   connecting: ['Подключение к Bybit…', 'Получаю первый TradFi snapshot'],
   connected: ['Поток подключён', 'Ожидаю котировку выбранной пары'],
   reconnecting: ['Восстанавливаю поток…', 'Расчёт остаётся на последней цене'],
+  stale: ['Котировка устарела', 'Ручной ввод доступен до свежего тика'],
   error: ['Поток временно недоступен', 'Можно продолжать с ручной ценой'],
 };
 
@@ -55,7 +56,7 @@ export default function PositionControls({
           <span className="live-price-switch" aria-hidden="true"><i /></span>
           <span>
             <strong>Автосинхронизация цены</strong>
-            <small>Bybit TradFi · MID без учёта спреда</small>
+            <small>CalcPro Relay · Bybit TradFi · MID без учёта спреда</small>
           </span>
         </label>
 

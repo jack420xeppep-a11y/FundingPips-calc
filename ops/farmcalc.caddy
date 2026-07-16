@@ -8,7 +8,7 @@ farmcalc.duckdns.org {
 	header @document Cache-Control "no-cache, must-revalidate"
 
 	header {
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://ws2.bybit.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Strict-Transport-Security "max-age=31536000"
@@ -17,6 +17,12 @@ farmcalc.duckdns.org {
 		X-XSS-Protection "0"
 	}
 
-	try_files {path} /index.html
-	file_server
+	route {
+		@quoteRelay path /api/quotes /api/quote-health
+		reverse_proxy @quoteRelay 127.0.0.1:8787 {
+			flush_interval -1
+		}
+		try_files {path} /index.html
+		file_server
+	}
 }

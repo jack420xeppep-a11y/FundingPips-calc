@@ -33,18 +33,28 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Validate operations scripts
+        run: npm run check:ops
+
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
       - name: Build production bundle
         run: npm run build
 
-      - name: Store production bundle
+      - name: Assemble release
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p release/server
+          cp -R dist release/
+          cp server/index.js server/quote-relay.js release/server/
+
+      - name: Store production release
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: calcpro-dist
-          path: dist
+          name: calcpro-release
+          path: release
           if-no-files-found: error
           retention-days: 7
 
@@ -54,11 +64,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Restore production bundle
+      - name: Restore production release
         uses: actions/download-artifact@v8
         with:
-          name: calcpro-dist
-          path: dist
+          name: calcpro-release
+          path: release
 
       - name: Configure restricted SSH key
         env:
@@ -70,14 +80,21 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
 
-      - name: Publish atomically safe static files
+      - name: Publish frontend and quote relay
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           rsync -az --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
-            dist/ "$DEPLOY_USER@$DEPLOY_HOST:/var/www/fundingpips-calc/"
+            release/dist/ "$DEPLOY_USER@$DEPLOY_HOST:/var/www/fundingpips-calc/"
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            release/server/ "$DEPLOY_USER@$DEPLOY_HOST:/opt/fundingpips-calc-relay/server/"
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" calcpro-relay-restart
+          test "$(ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" calcpro-relay-status)" = "active"
 
       - name: Verify production
         run: |
@@ -85,3 +102,13 @@ jobs:
             https://farmcalc.duckdns.org/ > /dev/null
           curl --fail --silent --show-error --retry 5 --retry-delay 2 \
             https://farmcalc.duckdns.org/site.webmanifest > /dev/null
+          for attempt in 1 2 3 4 5; do
+            health="$(curl --fail --silent --show-error https://farmcalc.duckdns.org/api/quote-health || true)"
+            if printf '%s' "$health" | grep -Eq '"status":"(live|stale)"' && \
+              printf '%s' "$health" | grep -q '"quoteCount":3'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          printf '%s\n' "$health"
+          exit 1

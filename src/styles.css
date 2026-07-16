@@ -462,6 +462,10 @@ html[data-theme="dark"] .theme-toggle__knob {
   color: var(--color-warning);
 }
 
+.live-price-status--stale {
+  color: var(--color-warning);
+}
+
 .live-price-status--error {
   color: var(--color-negative);
 }

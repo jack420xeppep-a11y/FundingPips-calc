@@ -95,6 +95,7 @@ try {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   await cdp.send('Log.enable');
+  await cdp.send('Network.enable');
   await cdp.send('Browser.grantPermissions', {
     origin: new URL(url).origin,
     permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'],
@@ -252,6 +253,21 @@ try {
   });
   const poundLive = await evaluate("Number(document.querySelector('#entryPrice').value)");
 
+  const networkUrls = cdp.events.flatMap((event) => {
+    if (event.method === 'Network.requestWillBeSent') {
+      return [event.params.request.url];
+    }
+    if (event.method === 'Network.webSocketCreated') {
+      return [event.params.url];
+    }
+    return [];
+  });
+  const quoteTransport = {
+    usedRelay: networkUrls.some((requestUrl) => requestUrl.includes('/api/quotes')),
+    openedDirectBybitSocket: networkUrls.some((requestUrl) =>
+      requestUrl.includes('ws2.bybit.com/realtime_w')),
+  };
+
   const screenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: false,
@@ -305,6 +321,8 @@ try {
     goldLive.status.includes('XAUUSD+') &&
     euroLive > 0 &&
     poundLive > 0 &&
+    quoteTransport.usedRelay &&
+    !quoteTransport.openedDirectBybitSocket &&
     darkTheme.selected &&
     darkTheme.canvas !== 'rgb(255, 255, 255)' &&
     desktop.advancedVisible &&
@@ -321,6 +339,7 @@ try {
     optimizer,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
+    quoteTransport,
     darkTheme,
     desktop,
     screenshotPath,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { createBybitTradfiFeed } from '../services/bybitTradfi.js';
+import { createQuoteRelayFeed } from '../services/quoteRelay.js';
 
 const OFF_STATE = Object.freeze({ status: 'off', quote: null, message: '' });
 
@@ -20,19 +20,22 @@ export default function useLivePrice({ enabled, instrument, onPrice }) {
       return undefined;
     }
 
-    const feed = createBybitTradfiFeed({
+    const feed = createQuoteRelayFeed({
       onQuotes(quotes) {
         for (const quote of quotes) quoteCacheRef.current.set(quote.instrument, quote);
         const quote = quoteCacheRef.current.get(instrumentRef.current);
         if (!quote) return;
-        setState({ status: 'live', quote, message: '' });
-        onPriceRef.current?.(quote);
+        const status = quote.stale ? 'stale' : 'live';
+        setState({ status, quote, message: '' });
+        if (!quote.stale) onPriceRef.current?.(quote);
       },
       onStatus(next) {
         setState((current) => ({
           ...current,
-          status: next.status === 'connected' && current.quote ? 'live' : next.status,
-          message: '',
+          status: next.status === 'connected' && current.quote
+            ? (current.quote.stale ? 'stale' : 'live')
+            : next.status,
+          message: next.message ?? '',
         }));
       },
       onError(error) {
@@ -48,8 +51,9 @@ export default function useLivePrice({ enabled, instrument, onPrice }) {
     if (!enabled) return;
     const quote = quoteCacheRef.current.get(instrument);
     if (quote) {
-      setState({ status: 'live', quote, message: '' });
-      onPriceRef.current?.(quote);
+      const status = quote.stale ? 'stale' : 'live';
+      setState({ status, quote, message: '' });
+      if (!quote.stale) onPriceRef.current?.(quote);
       return;
     }
     setState((current) => ({ ...current, status: 'connecting', quote: null, message: '' }));
