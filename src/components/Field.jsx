@@ -15,6 +15,7 @@ export default function Field({
   hint,
   readOnly = false,
   className = '',
+  after = null,
 }) {
   const handleChange = (event) => {
     const nextValue = normalizeFieldValue(event.target.value, { options, type });
@@ -46,6 +47,7 @@ export default function Field({
         />
       )}
       {hint ? <span className="field-hint">{hint}</span> : null}
+      {after}
     </div>
   );
 }

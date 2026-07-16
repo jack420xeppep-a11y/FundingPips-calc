@@ -7,6 +7,7 @@ const readUi = async () => {
   const files = [
     './App.jsx',
     './components/PositionControls.jsx',
+    './components/IntelligencePanel.jsx',
     './components/PositionResult.jsx',
     './components/RecoveryView.jsx',
     './components/ScenarioTable.jsx',
@@ -112,4 +113,28 @@ test('position workspace exposes accessible Bybit live price synchronization', a
   assert.match(controls, /Автосинхронизация цены/);
   assert.match(controls, /aria-live="polite"/);
   assert.match(controls, /Bybit TradFi/);
+});
+
+test('gold workspace exposes safe HL Intelligence AUTO guidance and setup lock', async () => {
+  const app = await read('./App.jsx');
+  const controls = await read('./components/PositionControls.jsx');
+  const panel = await read('./components/IntelligencePanel.jsx');
+  const result = await read('./components/PositionResult.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(app, /useGoldIntelligence/);
+  assert.match(app, /intelligenceLocked/);
+  assert.match(controls, /HL Intelligence/);
+  assert.match(controls, /OFF/);
+  assert.match(controls, /AUTO/);
+  assert.match(panel, /BB TP \/ FP SL/);
+  assert.match(panel, /Уверенность/);
+  assert.match(panel, /Зрелость модели/);
+  assert.match(panel, /Когорта/);
+  assert.match(panel, /NO EDGE/);
+  assert.match(panel, /Разблокировать AUTO/);
+  assert.match(result, /onTradeCopied/);
+  assert.match(styles, /\.intelligence-panel/);
+  assert.match(styles, /\.intelligence-paths/);
+  assert.match(styles, /\.intelligence-inline/);
 });

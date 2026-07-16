@@ -15,6 +15,8 @@
   --color-negative: #d43d51;
   --color-negative-soft: #fff0f2;
   --color-warning: #9a6500;
+  --color-intelligence: #0b7f74;
+  --color-intelligence-soft: #e9f7f5;
   --platform-bybit: #315ee8;
   --platform-bybit-soft: #eef3ff;
   --platform-fp: #a86400;
@@ -50,6 +52,8 @@ html[data-theme="dark"] {
   --color-negative: #ff8997;
   --color-negative-soft: #52363e;
   --color-warning: #f4c66b;
+  --color-intelligence: #70d8c8;
+  --color-intelligence-soft: #29443f;
   --platform-bybit: #8aa9ff;
   --platform-bybit-soft: #2d3d63;
   --platform-fp: #f0b86a;
@@ -551,6 +555,98 @@ html[data-theme="dark"] .theme-toggle__knob {
   text-transform: none;
 }
 
+.intelligence-inline {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.intelligence-inline > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.intelligence-inline__track {
+  position: relative;
+  display: grid;
+  width: 74px;
+  height: 26px;
+  flex: 0 0 auto;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-subtle);
+}
+
+.intelligence-inline__track b {
+  position: relative;
+  z-index: 1;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.54rem;
+  text-align: center;
+}
+
+.intelligence-inline__track i {
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  width: 33px;
+  border-radius: 2px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(20 30 40 / 15%);
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.intelligence-inline input:checked + .intelligence-inline__track {
+  border-color: var(--color-intelligence);
+  background: var(--color-intelligence-soft);
+}
+
+.intelligence-inline input:checked + .intelligence-inline__track i {
+  background: var(--color-intelligence);
+  transform: translateX(35px);
+}
+
+.intelligence-inline input:checked + .intelligence-inline__track b:last-of-type {
+  color: var(--color-surface);
+}
+
+.intelligence-inline input:not(:checked) + .intelligence-inline__track b:first-of-type {
+  color: var(--color-ink);
+}
+
+.intelligence-inline input:focus-visible + .intelligence-inline__track {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.intelligence-inline > small {
+  display: grid;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  line-height: 1.15;
+}
+
+.intelligence-inline > small strong {
+  color: var(--color-intelligence);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.intelligence-inline.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
@@ -559,12 +655,293 @@ html[data-theme="dark"] .theme-toggle__knob {
 .primary-workspace,
 .advanced-content,
 .position-result,
+.intelligence-panel,
 .settings-deck,
 .strategy-lab,
 .table-section,
 .recovery-controls,
 .recovery-visual {
   min-width: 0;
+}
+
+.intelligence-panel {
+  position: relative;
+  padding: 18px clamp(18px, 2.6vw, 30px);
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--color-intelligence) 8%, transparent), transparent 60%),
+    var(--color-raised);
+}
+
+.intelligence-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--color-intelligence);
+}
+
+.intelligence-head,
+.intelligence-recommendation,
+.intelligence-meta,
+.intelligence-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.intelligence-head h2 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.intelligence-status {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: var(--color-intelligence);
+  background: var(--color-intelligence-soft);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.intelligence-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.intelligence-panel--no_edge .intelligence-status,
+.intelligence-panel--stale .intelligence-status,
+.intelligence-panel--reconnecting .intelligence-status {
+  color: var(--color-warning);
+}
+
+.intelligence-panel--error .intelligence-status,
+.intelligence-panel--degraded .intelligence-status {
+  color: var(--color-negative);
+}
+
+.intelligence-panel.is-locked .intelligence-status {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.intelligence-recommendation {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+
+.intelligence-recommendation > div {
+  display: grid;
+  gap: 3px;
+}
+
+.intelligence-recommendation span,
+.intelligence-path span,
+.intelligence-signal-grid span,
+.intelligence-intent > span {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.intelligence-recommendation strong {
+  font-family: var(--font-mono);
+  font-size: clamp(0.88rem, 1.8vw, 1.15rem);
+}
+
+.intelligence-lock {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.intelligence-paths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.intelligence-path {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.intelligence-path.is-primary {
+  border-color: var(--color-intelligence);
+  box-shadow: inset 4px 0 0 var(--color-intelligence);
+  background: var(--color-intelligence-soft);
+}
+
+.intelligence-path strong {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.intelligence-path small {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.64rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.intelligence-advanced {
+  margin-top: 12px;
+}
+
+.intelligence-meta {
+  align-items: stretch;
+  border-top: 1px solid var(--color-line);
+  padding-top: 12px;
+}
+
+.intelligence-meta dl {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.intelligence-meta dl div {
+  display: grid;
+  gap: 4px;
+  padding-right: 12px;
+}
+
+.intelligence-meta dt,
+.intelligence-meta dd {
+  margin: 0;
+}
+
+.intelligence-meta dt {
+  color: var(--color-muted);
+  font-size: 0.62rem;
+}
+
+.intelligence-meta dd {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.intelligence-intent {
+  display: grid;
+  width: min(240px, 34%);
+  gap: 5px;
+}
+
+.intelligence-intent select {
+  min-height: 38px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+}
+
+.intelligence-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 12px;
+  border: 1px solid var(--color-line);
+}
+
+.intelligence-signal-grid div {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border-right: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.intelligence-signal-grid div:last-child {
+  border-right: 0;
+}
+
+.intelligence-signal-grid strong {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.intelligence-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--color-line);
+}
+
+.intelligence-details summary {
+  min-height: 38px;
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.intelligence-details ul {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.intelligence-details > small {
+  display: block;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+.intelligence-placeholder {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.intelligence-placeholder strong {
+  color: var(--color-intelligence);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.intelligence-placeholder span {
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
 }
 
 .primary-workspace {
@@ -1443,6 +1820,15 @@ tbody tr:hover {
   .settings-fields--bybit {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .intelligence-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .intelligence-intent {
+    width: 100%;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1552,6 +1938,63 @@ tbody tr:hover {
 
   .position-result {
     padding: 16px;
+  }
+
+  .intelligence-panel {
+    padding: 14px 12px;
+  }
+
+  .intelligence-head h2,
+  .intelligence-head .section-code {
+    display: none;
+  }
+
+  .intelligence-recommendation {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .intelligence-recommendation strong {
+    font-size: 0.78rem;
+  }
+
+  .intelligence-lock {
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 0.58rem;
+  }
+
+  .intelligence-path {
+    padding: 8px 7px;
+  }
+
+  .intelligence-path strong {
+    font-size: 0.94rem;
+  }
+
+  .intelligence-path small {
+    font-size: 0.52rem;
+  }
+
+  .intelligence-advanced {
+    display: none;
+  }
+
+  .workspace.advanced-open .intelligence-advanced {
+    display: block;
+  }
+
+  .intelligence-meta dl,
+  .intelligence-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .intelligence-signal-grid div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .intelligence-signal-grid div:nth-child(n + 3) {
+    border-top: 1px solid var(--color-line);
   }
 
   .position-result .section-head {

@@ -31,6 +31,9 @@ export default function PositionControls({
   autoPriceEnabled,
   onAutoPriceChange,
   livePrice,
+  intelligenceEnabled,
+  intelligenceAvailable,
+  onIntelligenceChange,
 }) {
   const isLive = livePrice.status === 'live' && livePrice.quote;
   const [statusTitle, defaultStatusDetail] = isLive
@@ -96,6 +99,27 @@ export default function PositionControls({
             { value: 'long', label: 'LONG' },
             { value: 'short', label: 'SHORT' },
           ]}
+          after={(
+            <label
+              className={`intelligence-inline ${intelligenceAvailable ? '' : 'is-disabled'}`}
+              htmlFor="hl-intelligence"
+            >
+              <input
+                id="hl-intelligence"
+                type="checkbox"
+                checked={intelligenceEnabled && intelligenceAvailable}
+                disabled={!intelligenceAvailable}
+                onChange={(event) => onIntelligenceChange(event.target.checked)}
+              />
+              <span className="intelligence-inline__track" aria-hidden="true">
+                <b>OFF</b><b>AUTO</b><i />
+              </span>
+              <small>
+                <strong>HL Intelligence</strong>
+                {intelligenceAvailable ? 'xyz:GOLD guidance' : 'Gold only'}
+              </small>
+            </label>
+          )}
         />
         <Field
           id="slPct"
