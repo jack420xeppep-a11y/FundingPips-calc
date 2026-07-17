@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import ActiveStrategyBar from './components/ActiveStrategyBar.jsx';
 import PositionControls from './components/PositionControls.jsx';
 import IntelligencePanel from './components/IntelligencePanel.jsx';
+import IntelligenceStrip from './components/IntelligenceStrip.jsx';
 import PositionResult from './components/PositionResult.jsx';
 import RecoveryView from './components/RecoveryView.jsx';
 import RiskRail from './components/RiskRail.jsx';
@@ -61,6 +63,23 @@ const initialRecovery = {
   steps: 10,
   widenFrom: 0,
   rangeMultiplier: 2,
+};
+
+const STRATEGY_VALUE_FIELDS = [
+  'bybitP1',
+  'bybitP2',
+  'bybitFunded',
+  'fundedPayout',
+];
+
+const strategyMatchesValues = (strategy, values) => {
+  if (!strategy || !values) return false;
+  const applied = strategy.applyValues ?? strategy.stakes ?? {};
+  return STRATEGY_VALUE_FIELDS.every((field) => {
+    const expected = applied[field] ?? strategy[field];
+    return Number.isFinite(Number(expected)) &&
+      Number(expected) === Number(values[field]);
+  });
 };
 
 function useTheme() {
@@ -163,6 +182,28 @@ export default function App() {
     () => buildStrategyPresets(positionValues),
     [positionValues],
   );
+  const activeStrategy = useMemo(() => {
+    const preset = strategyPresets.find((strategy) => (
+      strategyMatchesValues(strategy, positionValues)
+    ));
+    if (preset) return preset;
+    if (
+      recommendation?.status === 'ready' &&
+      strategyMatchesValues(recommendation, positionValues)
+    ) {
+      return recommendation;
+    }
+    return {
+      id: 'custom',
+      label: 'Custom / Manual',
+      stakes: {
+        bybitP1: Number(positionValues.bybitP1),
+        bybitP2: Number(positionValues.bybitP2),
+        bybitFunded: Number(positionValues.bybitFunded),
+      },
+      fundedPayout: Number(positionValues.fundedPayout),
+    };
+  }, [positionValues, recommendation, strategyPresets]);
   const recovery = useMemo(() => calculateRecovery(recoveryValues), [recoveryValues]);
   const intelligenceAvailable = positionValues.instrument === 'XAUUSD';
   const intelligenceSetup = useMemo(() => (
@@ -197,6 +238,14 @@ export default function App() {
     resumeAfter: intelligenceResumeAfter,
     onResynced: () => setIntelligenceResumeAfter(null),
   });
+  const liveIntelligenceDecision = intelligence.snapshot?.decision;
+  const canLockTrade = Boolean(
+    !tradeSnapshot &&
+    intelligenceEnabled &&
+    intelligenceAvailable &&
+    liveIntelligenceDecision?.autoEligible &&
+    ['long', 'short'].includes(liveIntelligenceDecision.fpDirection),
+  );
 
   const tradeView = useMemo(() => resolveTradeView({
     livePosition: position,
@@ -387,24 +436,16 @@ export default function App() {
                   setIntelligenceEnabled(enabled);
                 }}
               />
+              <ActiveStrategyBar profile={activeStrategy} />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>
                 <div className="primary-workspace">
-                  <IntelligencePanel
+                  <IntelligenceStrip
                     enabled={intelligenceEnabled || intelligenceLocked}
                     available={intelligenceAvailable || intelligenceLocked}
                     state={intelligence}
-                    intent={intelligenceIntent}
-                    onIntentChange={setIntelligenceIntent}
                     locked={intelligenceLocked}
                     tradeSnapshot={tradeSnapshot}
                     syncing={intelligenceResumeAfter !== null}
-                    onLockToggle={() => {
-                      if (intelligenceLocked) {
-                        unlockTrade();
-                      } else {
-                        lockCurrentTrade();
-                      }
-                    }}
                   />
                   <PositionResult
                     result={tradeView.position}
@@ -414,12 +455,52 @@ export default function App() {
                     expired={tradeView.expired}
                     lockedEntryPrice={tradeView.lockedEntryPrice}
                     marketNowPrice={tradeView.marketNowPrice}
+                    quoteStatus={autoPriceEnabled ? livePrice.status : 'manual'}
+                    directionStatus={
+                      intelligenceLocked
+                        ? 'locked'
+                        : canLockTrade
+                          ? 'ready'
+                          : intelligenceEnabled && intelligenceAvailable
+                            ? 'waiting'
+                            : 'manual'
+                    }
+                    canLock={canLockTrade}
                     prepareTradeCopy={() => (
                       tradeSnapshot?.ticket ??
                       lockCurrentTrade()?.ticket ??
                       null
                     )}
                   />
+                  {(intelligenceEnabled || intelligenceLocked) &&
+                  (intelligenceAvailable || intelligenceLocked) ? (
+                    <details className="intelligence-disclosure">
+                      <summary>
+                        <span>
+                          <strong>HL Intelligence details</strong>
+                          <small>Вероятности, Whale Pressure и причины решения</small>
+                        </span>
+                        <i aria-hidden="true" />
+                      </summary>
+                      <IntelligencePanel
+                        enabled={intelligenceEnabled || intelligenceLocked}
+                        available={intelligenceAvailable || intelligenceLocked}
+                        state={intelligence}
+                        intent={intelligenceIntent}
+                        onIntentChange={setIntelligenceIntent}
+                        locked={intelligenceLocked}
+                        tradeSnapshot={tradeSnapshot}
+                        syncing={intelligenceResumeAfter !== null}
+                        onLockToggle={() => {
+                          if (intelligenceLocked) {
+                            unlockTrade();
+                          } else {
+                            lockCurrentTrade();
+                          }
+                        }}
+                      />
+                    </details>
+                  ) : null}
                   <button
                     className="mobile-advanced-toggle"
                     type="button"
@@ -444,6 +525,7 @@ export default function App() {
                       }}
                       recommendation={recommendation}
                       presets={strategyPresets}
+                      activeStrategyId={activeStrategy.id}
                       onOptimize={() => setRecommendation(
                         optimizeStrategy(positionValues, strategyGoal),
                       )}

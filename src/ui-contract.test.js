@@ -7,7 +7,9 @@ const readUi = async () => {
   const files = [
     './App.jsx',
     './components/PositionControls.jsx',
+    './components/ActiveStrategyBar.jsx',
     './components/IntelligencePanel.jsx',
+    './components/IntelligenceStrip.jsx',
     './components/PositionResult.jsx',
     './components/RecoveryView.jsx',
     './components/ScenarioTable.jsx',
@@ -144,4 +146,54 @@ test('gold workspace exposes safe HL Intelligence AUTO guidance and setup lock',
   assert.match(styles, /\.sentiment-brief/);
   assert.match(styles, /\.pressure-row/);
   assert.match(styles, /\.intelligence-inline/);
+});
+
+test('execution stays ahead of detailed intelligence and exposes a compact decision strip', async () => {
+  const app = await read('./App.jsx');
+  const strip = await read('./components/IntelligenceStrip.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(app, /<IntelligenceStrip/);
+  assert.match(app, /<details className="intelligence-disclosure"/);
+  assert.ok(
+    app.indexOf('<PositionResult') < app.indexOf('<IntelligencePanel'),
+    'execution result must render before detailed intelligence',
+  );
+  assert.match(strip, /HL AUTO/);
+  assert.match(strip, /CONFIRMED/);
+  assert.match(strip, /stableForMs/);
+  assert.match(styles, /\.intelligence-strip/);
+  assert.match(styles, /\.intelligence-disclosure/);
+});
+
+test('mobile execution has a sticky readiness checklist and lock-copy action', async () => {
+  const result = await read('./components/PositionResult.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(result, /QUOTE LIVE/);
+  assert.match(result, /RISK OK/);
+  assert.match(result, /DIRECTION LOCKED/);
+  assert.match(result, /TP\/SL READY/);
+  assert.match(result, /Зафиксировать и скопировать/);
+  assert.match(styles, /\.execution-readiness/);
+  assert.match(styles, /\.quick-actions[\s\S]*position:\s*(?:sticky|fixed)/);
+});
+
+test('strategy comparison exposes active profile, trade-offs, and mobile cards', async () => {
+  const app = await read('./App.jsx');
+  const activeProfile = await read('./components/ActiveStrategyBar.jsx');
+  const strategyLab = await read('./components/StrategyLab.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(app, /<ActiveStrategyBar/);
+  assert.match(activeProfile, /ACTIVE PROFILE/);
+  assert.match(activeProfile, /P1/);
+  assert.match(activeProfile, /P2/);
+  assert.match(activeProfile, /Funded/);
+  assert.match(activeProfile, /payout/);
+  assert.match(strategyLab, /strategy-tradeoffs/);
+  assert.match(strategyLab, /strategy-cards/);
+  assert.match(strategyLab, /aria-pressed=/);
+  assert.match(styles, /\.strategy-cards/);
+  assert.match(styles, /\.strategy-card\.is-active/);
 });

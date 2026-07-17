@@ -74,7 +74,7 @@ try {
     const value = Number(activePort.split('\n')[0]);
     if (!Number.isInteger(value)) throw new Error('Chrome did not publish a debugging port');
     return value;
-  }, 200).catch((error) => {
+  }, 600).catch((error) => {
     throw new Error(`Chrome did not start: ${chromeErrors || error.message}`);
   });
 
@@ -140,10 +140,26 @@ try {
     advancedHidden: getComputedStyle(document.querySelector('.advanced-content')).display === 'none',
     riskHidden: getComputedStyle(document.querySelector('.risk-rail')).display === 'none',
     copyVisible: getComputedStyle(document.querySelector('.copy-trade')).display !== 'none',
+    copySticky: ['sticky', 'fixed'].includes(
+      getComputedStyle(document.querySelector('.quick-actions')).position
+    ),
+    copyDockedInitially: document.querySelector('.quick-actions').classList.contains('is-docked'),
+    readinessCount: document.querySelectorAll('.execution-readiness li').length,
+    activeProfile: document.querySelector('.active-strategy-bar').innerText,
     controlCount: document.querySelectorAll('.input-rail .field').length,
     advancedExpanded: document.querySelector('.mobile-advanced-toggle').getAttribute('aria-expanded'),
     noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
   }))()`);
+
+  await evaluate(`(() => {
+    const result = document.querySelector('.position-result');
+    window.scrollTo({ top: Math.max(0, result.offsetTop - 120), behavior: 'instant' });
+    return true;
+  })()`);
+  await delay(150);
+  const quickActionDocked = await evaluate(
+    "document.querySelector('.quick-actions').classList.contains('is-docked')",
+  );
 
   await evaluate(`(() => {
     document.querySelector('.copy-trade').click();
@@ -166,6 +182,11 @@ try {
   const advancedVisible = await evaluate(
     "getComputedStyle(document.querySelector('.advanced-content')).display !== 'none'",
   );
+  const mobileStrategies = await evaluate(`(() => ({
+    cardsVisible: getComputedStyle(document.querySelector('.strategy-cards')).display !== 'none',
+    cardCount: document.querySelectorAll('.strategy-card').length,
+    tableHidden: getComputedStyle(document.querySelector('.comparison-card .table-scroll')).display === 'none',
+  }))()`);
 
   await evaluate(`(() => {
     const select = document.querySelector('#strategy-goal');
@@ -220,6 +241,7 @@ try {
       p2: document.querySelector('#bybitP2').value,
       funded: document.querySelector('#bybitFunded').value,
       payout: document.querySelector('#fundedPayout').value,
+      activeProfile: document.querySelector('.active-strategy-bar').innerText,
       totals,
     };
   })()`);
@@ -244,6 +266,7 @@ try {
     p2: document.querySelector('#bybitP2').value,
     funded: document.querySelector('#bybitFunded').value,
     payout: document.querySelector('#fundedPayout').value,
+    activeProfile: document.querySelector('.active-strategy-bar').innerText,
   }))()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
@@ -282,26 +305,39 @@ try {
       const panel = document.querySelector('.intelligence-panel');
       return panel &&
         panel.querySelectorAll('.intelligence-path').length === 3 &&
-        panel.innerText.includes('BB TP / FP SL') &&
-        panel.innerText.includes('BB SL / FP TP');
+        panel.textContent.includes('BB TP / FP SL') &&
+        panel.textContent.includes('BB SL / FP TP');
     })()`);
     if (!ready) throw new Error('HL Intelligence aggregate panel is not ready');
   }, 300);
   const intelligence = await evaluate(`(() => {
     const probabilities = [...document.querySelectorAll('.intelligence-path strong')]
-      .map((node) => Number(node.innerText.replace('%', '')) / 100);
+      .map((node) => Number(node.textContent.replace('%', '')) / 100);
     return {
       enabled: document.querySelector('#hl-intelligence').checked,
       status: document.querySelector('.intelligence-status').innerText,
       probabilitySum: probabilities.reduce((sum, value) => sum + value, 0),
-      recommendation: document.querySelector('.intelligence-recommendation strong').innerText,
+      recommendation: document.querySelector('.intelligence-recommendation strong').textContent,
       pressureRows: document.querySelectorAll('.pressure-row').length,
-      whaleText: document.querySelector('.sentiment-brief').innerText,
+      whaleText: document.querySelector('.sentiment-brief').textContent,
+      stripVisible: getComputedStyle(document.querySelector('.intelligence-strip')).display !== 'none',
+      stripText: document.querySelector('.intelligence-strip').innerText,
+      executionBeforeDetails:
+        document.querySelector('.position-result').compareDocumentPosition(
+          document.querySelector('.intelligence-disclosure')
+        ) === Node.DOCUMENT_POSITION_FOLLOWING,
+      disclosureClosed: !document.querySelector('.intelligence-disclosure').open,
       advancedHidden:
         getComputedStyle(document.querySelector('.intelligence-advanced')).display === 'none',
       noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
     };
   })()`);
+  await evaluate("document.querySelector('.intelligence-disclosure > summary').click()");
+  await delay(100);
+  const intelligenceDetailsVisible = await evaluate(`(() =>
+    document.querySelector('.intelligence-disclosure').open &&
+    getComputedStyle(document.querySelector('.intelligence-advanced')).display !== 'none'
+  )()`);
 
   await evaluate("document.querySelector('.copy-trade').click()");
   await retry(async () => {
@@ -440,17 +476,26 @@ try {
   const passed = quickMode.advancedHidden &&
     quickMode.riskHidden &&
     quickMode.copyVisible &&
+    quickMode.copySticky &&
+    !quickMode.copyDockedInitially &&
+    quickActionDocked &&
+    quickMode.readinessCount === 4 &&
+    quickMode.activeProfile.toUpperCase().includes('СБАЛАНСИРОВАННАЯ') &&
     quickMode.controlCount === 5 &&
     quickMode.advancedExpanded === 'false' &&
     quickMode.noHorizontalOverflow &&
     copyWorked === true &&
     advancedVisible &&
+    mobileStrategies.cardsVisible &&
+    mobileStrategies.cardCount === 4 &&
+    mobileStrategies.tableHidden &&
     optimizer.fundedStake === '28' &&
     optimizer.breakEvenText.includes('5.36%') &&
     legacyOriginal.p1 === '25' &&
     legacyOriginal.p2 === '55' &&
     legacyOriginal.funded === '50' &&
     legacyOriginal.payout === '5' &&
+    legacyOriginal.activeProfile.toUpperCase().includes('LEGACY ORIGINAL') &&
     legacyOriginal.totals.some((value) => value.includes('+$109.00')) &&
     legacyOriginal.totals.some((value) => value.includes('+$196.50')) &&
     legacyOriginal.totals.some((value) => value.includes('−$153.50')) &&
@@ -458,6 +503,7 @@ try {
     balancedRestored.p2 === '45' &&
     balancedRestored.funded === '45' &&
     balancedRestored.payout === '8' &&
+    balancedRestored.activeProfile.toUpperCase().includes('СБАЛАНСИРОВАННАЯ') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
@@ -471,9 +517,14 @@ try {
     (intelligence.recommendation.includes('FP') ||
       intelligence.recommendation.includes('MANUAL DIRECTION')) &&
     intelligence.advancedHidden &&
+    intelligence.stripVisible &&
+    intelligence.stripText.includes('HL AUTO') &&
+    intelligence.executionBeforeDetails &&
+    intelligence.disclosureClosed &&
+    intelligenceDetailsVisible &&
     intelligence.noHorizontalOverflow &&
     intelligence.pressureRows === 3 &&
-    intelligence.whaleText.includes('COMBINED') &&
+    intelligence.whaleText.toUpperCase().includes('COMBINED') &&
     intelligenceUnlocked &&
     intelligenceSyncing &&
     euroLive > 0 &&
@@ -493,14 +544,17 @@ try {
   console.log(JSON.stringify({
     passed,
     quickMode,
+    quickActionDocked,
     copyWorked,
     advancedVisible,
+    mobileStrategies,
     optimizer,
     legacyOriginal,
     balancedRestored,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,
+    intelligenceDetailsVisible,
     intelligenceUnlocked,
     intelligenceSyncing,
     quoteTransport,
