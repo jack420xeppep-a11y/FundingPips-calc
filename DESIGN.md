@@ -82,8 +82,10 @@ Dark theme deliberately avoids near-black:
 - Recovery ladder: separate strategy inputs, table, and compact summary.
 - Validation: invalid numeric inputs produce an inline message without breaking the layout.
 - Intelligence strip: one compact gold-only decision line before execution.
-  It shows the paired direction, confidence, stable state, and age without
-  pushing lot sizes below the first viewport.
+  It always shows the current paired bias plus DOWN/UP/NEITHER probabilities;
+  WATCH only gates AUTO application and never hides the informational forecast.
+  Stable state and age remain visible without pushing lot sizes below the
+  first viewport.
 - Intelligence disclosure: probabilities, Whale Pressure, timing, and reasons
   live after the execution legs in a native expandable section.
 - Mobile readiness dock: after the trader reaches execution it exposes

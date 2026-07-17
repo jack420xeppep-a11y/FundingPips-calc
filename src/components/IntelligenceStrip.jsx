@@ -1,25 +1,8 @@
 import React from 'react';
-
-const pct = (value) => `${Math.round(Number(value ?? 0) * 100)}%`;
-
-const stateLabels = {
-  CONFIRMED_LONG: 'CONFIRMED',
-  CONFIRMED_SHORT: 'CONFIRMED',
-  COOLDOWN_LONG: 'COOLDOWN',
-  COOLDOWN_SHORT: 'COOLDOWN',
-  WATCH_LONG: 'WATCH',
-  WATCH_SHORT: 'WATCH',
-  WARMING: 'WARMING',
-  SYNCING: 'SYNCING',
-  EXPIRED: 'EXPIRED',
-};
-
-const formatDuration = (milliseconds) => {
-  const seconds = Math.max(0, Math.floor(Number(milliseconds ?? 0) / 1_000));
-  const minutes = Math.floor(seconds / 60);
-  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-  return `${seconds}s`;
-};
+import {
+  buildIntelligenceStripView,
+  formatProbability,
+} from './intelligence-strip-view.js';
 
 export default function IntelligenceStrip({
   enabled,
@@ -32,50 +15,37 @@ export default function IntelligenceStrip({
   if (!available || !enabled) return null;
 
   const liveSnapshot = state.snapshot;
-  const decision = tradeSnapshot?.decision ?? liveSnapshot?.decision;
-  const direction = decision?.fpDirection ??
-    liveSnapshot?.recommendation?.stableDirection ??
-    liveSnapshot?.recommendation?.fpDirection;
-  const bybitDirection = direction === 'long' ? 'SHORT' : direction === 'short' ? 'LONG' : '—';
-  const generatedAt = tradeSnapshot?.createdAt ??
-    liveSnapshot?.generatedAt ??
-    decision?.generatedAt;
-  const stableForMs = !syncing && decision?.stableSince
-    ? Math.max(0, Number(generatedAt) - Number(decision.stableSince))
-    : 0;
-  const stateName = tradeSnapshot?.expired
-    ? 'EXPIRED'
-    : locked
-      ? 'LOCKED'
-      : syncing
-        ? 'SYNCING'
-        : decision?.state ?? 'WARMING';
-  const actionable = locked || decision?.autoEligible === true ||
-    liveSnapshot?.recommendation?.autoEligible === true;
-  const confidence = decision?.confidence ?? liveSnapshot?.confidence;
-  const stateLabel = stateName === 'LOCKED'
-    ? 'LOCKED'
-    : stateLabels[stateName] ?? String(stateName).replaceAll('_', ' ');
+  const view = buildIntelligenceStripView({
+    liveSnapshot,
+    tradeSnapshot,
+    locked,
+    syncing,
+  });
 
   return (
     <section
-      className={`intelligence-strip intelligence-strip--${stateLabel.toLowerCase()}`}
+      className={`intelligence-strip intelligence-strip--${view.stateLabel.toLowerCase()}`}
       aria-label="Краткий вывод HL Intelligence"
       aria-live="polite"
     >
       <span className="intelligence-strip__mode"><i aria-hidden="true" />HL AUTO</span>
-      <strong>
-        {actionable && direction
-          ? `FP ${direction.toUpperCase()} / BB ${bybitDirection}`
-          : 'WAIT / MANUAL'}
-      </strong>
-      <span className="intelligence-strip__confidence">
-        {Number.isFinite(Number(confidence)) ? pct(confidence) : '—'}
+      <span className="intelligence-strip__direction">
+        <small>{view.directionMode}</small>
+        <strong>{view.directionText}</strong>
       </span>
-      <span className="intelligence-strip__state">{stateLabel}</span>
-      <small>{stateLabel === 'CONFIRMED' || stateLabel === 'LOCKED'
-        ? `stable ${formatDuration(stableForMs)}`
-        : 'ожидание устойчивого сигнала'}</small>
+      <span className="intelligence-strip__paths" aria-label="Прогноз движения">
+        {view.paths.map((path) => (
+          <span
+            className={`intelligence-strip__path ${path.primary ? 'is-primary' : ''}`}
+            key={path.key}
+          >
+            <small>{path.label}</small>
+            <strong>{formatProbability(path.probability)}</strong>
+          </span>
+        ))}
+      </span>
+      <span className="intelligence-strip__state">{view.stateLabel}</span>
+      <small className="intelligence-strip__note">{view.noteText}</small>
     </section>
   );
 }

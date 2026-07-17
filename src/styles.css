@@ -731,10 +731,10 @@ html[data-theme="dark"] .theme-toggle__knob {
 
 .intelligence-strip {
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) auto auto auto;
-  min-height: 52px;
+  grid-template-columns: auto minmax(190px, 0.8fr) minmax(260px, 1.2fr) auto auto;
+  min-height: 58px;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 8px clamp(18px, 2.6vw, 30px);
   border-bottom: 1px solid var(--color-line);
   background: var(--color-intelligence-soft);
@@ -761,7 +761,25 @@ html[data-theme="dark"] .theme-toggle__knob {
   background: currentColor;
 }
 
-.intelligence-strip > strong {
+.intelligence-strip__direction {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.intelligence-strip__direction > small {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border: 1px solid var(--color-strong-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.intelligence-strip__direction > strong {
   overflow: hidden;
   color: var(--color-ink);
   font-size: 0.76rem;
@@ -769,10 +787,50 @@ html[data-theme="dark"] .theme-toggle__knob {
   white-space: nowrap;
 }
 
-.intelligence-strip__confidence {
+.intelligence-strip__paths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(68px, 1fr));
+  min-width: 0;
+  border-right: 1px solid var(--color-line);
+  border-left: 1px solid var(--color-line);
+}
+
+.intelligence-strip__path {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 5px 10px;
+}
+
+.intelligence-strip__path + .intelligence-strip__path {
+  border-left: 1px solid var(--color-line);
+}
+
+.intelligence-strip__path small {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+}
+
+.intelligence-strip__path strong {
   color: var(--color-ink);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 900;
+}
+
+.intelligence-strip__path.is-primary {
+  background: color-mix(in srgb, var(--color-intelligence) 8%, transparent);
+  box-shadow: inset 0 -2px 0 var(--color-intelligence);
+}
+
+.intelligence-strip__path.is-primary small,
+.intelligence-strip__path.is-primary strong {
+  color: var(--color-intelligence);
 }
 
 .intelligence-strip__state {
@@ -782,7 +840,7 @@ html[data-theme="dark"] .theme-toggle__knob {
   border-radius: var(--radius-sm);
 }
 
-.intelligence-strip > small {
+.intelligence-strip__note {
   color: var(--color-muted);
   font-size: 0.58rem;
   white-space: nowrap;
@@ -2213,6 +2271,14 @@ tbody tr:hover {
   .recovery-inputs {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .intelligence-strip {
+    grid-template-columns: auto minmax(190px, 0.8fr) minmax(260px, 1.2fr) auto;
+  }
+
+  .intelligence-strip__note {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -2405,7 +2471,7 @@ tbody tr:hover {
   .intelligence-strip {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
-    min-height: 46px;
+    min-height: 0;
     padding: 7px 12px;
   }
 
@@ -2413,16 +2479,45 @@ tbody tr:hover {
     font-size: 0.56rem;
   }
 
-  .intelligence-strip > strong {
+  .intelligence-strip__direction {
+    gap: 6px;
+  }
+
+  .intelligence-strip__direction > small {
+    padding: 2px 4px;
+    font-size: 0.44rem;
+  }
+
+  .intelligence-strip__direction > strong {
+    font-size: 0.64rem;
+  }
+
+  .intelligence-strip__paths {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .intelligence-strip__path {
+    padding: 5px 7px;
+  }
+
+  .intelligence-strip__path small {
+    font-size: 0.46rem;
+  }
+
+  .intelligence-strip__path strong {
     font-size: 0.66rem;
   }
 
-  .intelligence-strip__confidence {
-    font-size: 0.7rem;
+  .intelligence-strip__state {
+    min-height: 24px;
+    padding-inline: 6px;
+    font-size: 0.5rem;
   }
 
-  .intelligence-strip__state,
-  .intelligence-strip > small {
+  .intelligence-strip__note {
     display: none;
   }
 
