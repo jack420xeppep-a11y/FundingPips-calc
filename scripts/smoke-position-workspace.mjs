@@ -322,6 +322,7 @@ try {
       whaleText: document.querySelector('.sentiment-brief').textContent,
       stripVisible: getComputedStyle(document.querySelector('.intelligence-strip')).display !== 'none',
       stripText: document.querySelector('.intelligence-strip').innerText,
+      stripPathCount: document.querySelectorAll('.intelligence-strip__path').length,
       executionBeforeDetails:
         document.querySelector('.position-result').compareDocumentPosition(
           document.querySelector('.intelligence-disclosure')
@@ -362,8 +363,9 @@ try {
     const button = document.querySelector('.intelligence-lock');
     return button
       ? button.innerText.includes('Зафиксировать')
-      : document.querySelector('.intelligence-recommendation')
-        .innerText.includes('MANUAL DIRECTION');
+      : /BIAS|MANUAL DIRECTION/.test(
+          document.querySelector('.intelligence-recommendation').innerText
+        );
   })()`);
   const intelligenceSyncing = await evaluate(
     "document.querySelector('.intelligence-status')?.innerText.includes('SYNCING')",
@@ -439,6 +441,7 @@ try {
     mobile: false,
   });
   await delay(150);
+  await evaluate("window.scrollTo({ top: 0, behavior: 'instant' })");
   await evaluate(`(() => {
     const select = document.querySelector('#instrument');
     select.value = 'XAUUSD';
@@ -466,6 +469,24 @@ try {
     desktopScreenshotPath,
     Buffer.from(desktopScreenshot.data, 'base64'),
   );
+
+  const responsiveWidths = {};
+  for (const width of [768, 1024]) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await delay(100);
+    responsiveWidths[width] = await evaluate(`(() => ({
+      stripFits: document.querySelector('.intelligence-strip').scrollWidth <=
+        document.querySelector('.intelligence-strip').clientWidth,
+      stripPathCount: document.querySelectorAll('.intelligence-strip__path').length,
+      rootOverflowClipped: getComputedStyle(document.documentElement).overflowX === 'clip' &&
+        getComputedStyle(document.body).overflowX === 'clip',
+    }))()`);
+  }
 
   const errors = cdp.events
     .filter((event) => event.method === 'Runtime.exceptionThrown' ||
@@ -519,6 +540,10 @@ try {
     intelligence.advancedHidden &&
     intelligence.stripVisible &&
     intelligence.stripText.includes('HL AUTO') &&
+    intelligence.stripText.includes('DOWN') &&
+    intelligence.stripText.includes('UP') &&
+    intelligence.stripText.includes('NEITHER') &&
+    intelligence.stripPathCount === 3 &&
     intelligence.executionBeforeDetails &&
     intelligence.disclosureClosed &&
     intelligenceDetailsVisible &&
@@ -539,6 +564,9 @@ try {
     desktop.riskVisible &&
     desktop.strategyVisible &&
     desktop.noHorizontalOverflow &&
+    Object.values(responsiveWidths).every((result) =>
+      result.rootOverflowClipped && result.stripFits && result.stripPathCount === 3
+    ) &&
     errors.length === 0;
 
   console.log(JSON.stringify({
@@ -560,6 +588,7 @@ try {
     quoteTransport,
     darkTheme,
     desktop,
+    responsiveWidths,
     screenshotPath,
     desktopScreenshotPath,
     errors,

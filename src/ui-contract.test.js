@@ -150,7 +150,10 @@ test('gold workspace exposes safe HL Intelligence AUTO guidance and setup lock',
 
 test('execution stays ahead of detailed intelligence and exposes a compact decision strip', async () => {
   const app = await read('./App.jsx');
-  const strip = await read('./components/IntelligenceStrip.jsx');
+  const strip = [
+    await read('./components/IntelligenceStrip.jsx'),
+    await read('./components/intelligence-strip-view.js'),
+  ].join('\n');
   const styles = await read('./styles.css');
 
   assert.match(app, /<IntelligenceStrip/);
@@ -160,6 +163,10 @@ test('execution stays ahead of detailed intelligence and exposes a compact decis
     'execution result must render before detailed intelligence',
   );
   assert.match(strip, /HL AUTO/);
+  assert.match(strip, /BIAS/);
+  assert.match(strip, /DOWN/);
+  assert.match(strip, /UP/);
+  assert.match(strip, /NEITHER/);
   assert.match(strip, /CONFIRMED/);
   assert.match(strip, /stableForMs/);
   assert.match(styles, /\.intelligence-strip/);

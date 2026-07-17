@@ -164,8 +164,8 @@ export default function IntelligencePanel({
             <div>
               <span>Стабильный вывод</span>
               <strong>
-                {actionable || locked
-                  ? `FP ${direction?.toUpperCase() ?? '—'} / BYBIT ${bybitDirection}`
+                {direction
+                  ? `${actionable || locked ? 'SIGNAL' : 'BIAS'} · FP ${direction.toUpperCase()} / BYBIT ${bybitDirection}`
                   : 'WAIT / MANUAL DIRECTION'}
               </strong>
               <small>
