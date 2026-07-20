@@ -1,4 +1,5 @@
 import {
+  calculatePhaseEconomics,
   calculateScenarios,
   getAccountSettings,
   getLegacyAccountSettings,
@@ -97,21 +98,57 @@ export function calculateBreakEven(input) {
       breakEvenPct: null,
       safeBreakEvenPct: null,
       marginPct: null,
+      cycleFees: null,
     };
   }
 
-  const p1Units = Number(input.p1Target) / Number(input.riskPerTrade);
-  const p2Units = Number(input.p2Target) / Number(input.riskPerTrade);
+  const p1Econ = calculatePhaseEconomics(
+    input, input.p1Target, input.riskPerTrade, input.bybitP1,
+  );
+  const p2Econ = calculatePhaseEconomics(
+    input, input.p2Target, input.riskPerTrade, input.bybitP2,
+  );
+  const fundedPerPct = calculatePhaseEconomics(
+    input, 1, input.fundedRisk, input.bybitFunded,
+  );
+  const currentTargetPct = Number(input.fundedPayout);
+
+  if (
+    p1Econ.status !== 'ready' ||
+    p2Econ.status !== 'ready' ||
+    fundedPerPct.status !== 'ready'
+  ) {
+    return {
+      status: 'unreachable',
+      message:
+        'При текущих winrate, RR и комиссиях ожидаемый прогресс за сделку ≤ 0 — цели этапов недостижимы. Поднимите winrate/RR, расширьте SL или снизьте комиссии.',
+      fixedCosts: null,
+      payoutPerPct: null,
+      fundedHedgePerPct: null,
+      netPerPct: null,
+      currentTargetPct,
+      projectedTotal: null,
+      cycleFees: null,
+      breakEvenPct: null,
+      safeBreakEvenPct: null,
+      marginPct: null,
+    };
+  }
+
   const fixedCosts =
-    Number(input.challengeCost) +
-    p1Units * Number(input.bybitP1) +
-    p2Units * Number(input.bybitP2);
+    Number(input.challengeCost) + p1Econ.total + p2Econ.total;
   const payoutPerPct =
     (Number(input.accountSize) * Number(input.profitSplit)) / 100;
-  const fundedHedgePerPct = Number(input.bybitFunded) / Number(input.fundedRisk);
+  const fundedHedgePerPct = fundedPerPct.total;
   const netPerPct = payoutPerPct - fundedHedgePerPct;
-  const currentTargetPct = Number(input.fundedPayout);
   const projectedTotal = calculateScenarios(input).at(-1)?.total ?? null;
+  const cycleFees =
+    input.feesEnabled === true
+      ? round(
+          p1Econ.overhead + p2Econ.overhead +
+            fundedPerPct.overhead * currentTargetPct,
+        )
+      : null;
 
   if (netPerPct <= 0) {
     return {
@@ -123,6 +160,7 @@ export function calculateBreakEven(input) {
       netPerPct: round(netPerPct),
       currentTargetPct,
       projectedTotal,
+      cycleFees,
       breakEvenPct: null,
       safeBreakEvenPct: null,
       marginPct: null,
@@ -134,7 +172,10 @@ export function calculateBreakEven(input) {
 
   return {
     status: 'ready',
-    message: 'Без учёта комиссий и спреда, по текущим параметрам.',
+    message:
+      input.feesEnabled === true
+        ? 'С учётом комиссий Bybit и FP по заданным параметрам.'
+        : 'Без учёта комиссий и спреда, по текущим параметрам.',
     fixedCosts: round(fixedCosts),
     payoutPerPct: round(payoutPerPct),
     fundedHedgePerPct: round(fundedHedgePerPct),
@@ -144,6 +185,7 @@ export function calculateBreakEven(input) {
     currentTargetPct,
     marginPct: round(currentTargetPct - safeBreakEvenPct),
     projectedTotal,
+    cycleFees,
   };
 }
 

@@ -3,6 +3,7 @@ import React from 'react';
 import { formatMoney } from '../format.js';
 
 export default function RiskRail({ values, position, breakEven }) {
+  const feesLive = values.feesEnabled === true && Number(values.slPct) > 0;
   const currentRisk = values.stage === 'funded' ? values.fundedRisk : values.riskPerTrade;
   const utilization = Math.min(100, (Number(currentRisk) / Number(values.maxDrawdown || 1)) * 100);
   const available = Math.max(0, Number(values.maxDrawdown) - Number(currentRisk));
@@ -42,7 +43,9 @@ export default function RiskRail({ values, position, breakEven }) {
       </section>
 
       <section className="risk-block break-even-block">
-        <span className="section-code">Cycle economics / fee-free</span>
+        <span className="section-code">
+          {feesLive ? 'Cycle economics / fee-aware' : 'Cycle economics / fee-free'}
+        </span>
         <h2>Безубыточность</h2>
         {breakEven.status === 'ready' ? (
           <>
@@ -55,11 +58,21 @@ export default function RiskRail({ values, position, breakEven }) {
                   {breakEven.marginPct >= 0 ? '+' : '−'}{Math.abs(breakEven.marginPct).toFixed(2)}%
                 </dd>
               </div>
+              {feesLive && breakEven.cycleFees !== null && breakEven.cycleFees !== undefined ? (
+                <div>
+                  <dt>Комиссии за цикл</dt>
+                  <dd className="negative">−{formatMoney(breakEven.cycleFees)}</dd>
+                </div>
+              ) : null}
             </dl>
             <p className={`break-even-status ${breakEven.marginPct >= 0 ? 'is-safe' : 'is-risky'}`}>
               {breakEven.marginPct >= 0 ? 'Цель выше порога безубытка' : 'Цель ниже порога безубытка'}
             </p>
-            <small>Комиссии и спред не учитываются.</small>
+            <small>
+              {feesLive
+                ? `Учтены Bybit ${Number(values.bybitFeePct).toFixed(3)}%/сторона, FP $${Number(values.fpCommissionPerLot).toFixed(2)}/лот, winrate ${Number(values.winRate).toFixed(0)}%.`
+                : 'Комиссии и спред не учитываются.'}
+            </small>
           </>
         ) : (
           <p className="break-even-error" role="status">{breakEven.message}</p>

@@ -1846,6 +1846,14 @@ html[data-theme="dark"] .theme-toggle__knob {
   grid-template-columns: 1fr;
 }
 
+.settings-group--fees {
+  grid-column: 1 / -1;
+}
+
+.settings-fields--fees {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .strategy-lab__head {
   margin-bottom: 18px;
 }
@@ -2315,7 +2323,8 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .settings-fields--bybit {
+  .settings-fields--bybit,
+  .settings-fields--fees {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

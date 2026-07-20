@@ -73,6 +73,53 @@ export default function SettingsDeck({ values, onChange }) {
             />
           </div>
         </details>
+
+        <details className="settings-group settings-group--fees" open>
+          <summary>
+            <span><i aria-hidden="true" />Комиссии</span>
+            <small>Fees & churn</small>
+          </summary>
+          <div className="settings-fields settings-fields--fees">
+            <Field
+              id="feesEnabled"
+              label="Учёт комиссий"
+              value={values.feesEnabled}
+              onChange={onChange}
+              options={[
+                { value: true, label: 'Учитывать' },
+                { value: false, label: 'Fee-free модель' },
+              ]}
+            />
+            <Field
+              id="bybitFeePct"
+              label="Bybit fee, % за сторону"
+              value={values.bybitFeePct}
+              onChange={onChange}
+              step="0.005"
+              min="0"
+              hint="Gold perp: мейкер 0, тейкер 0.0275. Крипто: 0.055 / 0.02"
+            />
+            <Field
+              id="fpCommissionPerLot"
+              label="FP, $ за лот (round turn)"
+              value={values.fpCommissionPerLot}
+              onChange={onChange}
+              step="0.5"
+              min="0"
+              hint="FundingPips 2-Step: $5 (FX и металлы), Zero: $7. Спред — надбавкой сюда"
+            />
+            <Field
+              id="winRate"
+              label="Ожидаемый winrate, %"
+              value={values.winRate}
+              onChange={onChange}
+              step="5"
+              min="1"
+              max="99"
+              hint="Для оценки числа сделок в цикле"
+            />
+          </div>
+        </details>
       </div>
     </section>
   );

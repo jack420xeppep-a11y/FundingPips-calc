@@ -186,3 +186,72 @@ test('minimum funded target keeps P1/P2 preset and reduces only Funded stake', (
   assert.equal(result.safeBreakEvenPct, 5.36);
   assert.equal(result.failureFloor, 1.5);
 });
+
+test('fee-aware break-even rises against the fee-free baseline', () => {
+  const base = {
+    accountPreset: '25k',
+    accountSize: 25000,
+    challengeCost: 156,
+    bybitP1: 63,
+    bybitP2: 113,
+    bybitFunded: 113,
+    instrument: 'GBPUSD',
+    entryPrice: 1.333,
+    slPct: 0.66,
+    rrRatio: 2,
+    p1Target: 8,
+    p2Target: 5,
+    maxDrawdown: 10,
+    riskPerTrade: 2,
+    profitSplit: 0.8,
+    fundedRisk: 1,
+    fundedPayout: 8,
+  };
+
+  const feeFree = calculateBreakEven(base);
+  assert.equal(feeFree.status, 'ready');
+  assert.equal(feeFree.safeBreakEvenPct, 7.94);
+  assert.equal(feeFree.cycleFees, null);
+
+  const feeAware = calculateBreakEven({
+    ...base,
+    feesEnabled: true,
+    bybitFeePct: 0.055,
+    fpCommissionPerLot: 0,
+    winRate: 50,
+  });
+  assert.equal(feeAware.status, 'ready');
+  assert.ok(feeAware.safeBreakEvenPct > feeFree.safeBreakEvenPct);
+  assert.ok(feeAware.cycleFees > 0);
+  // ручной расчёт: fixed 156+336+376.67=868.67, net/pct 200−150.67=49.33 → 17.61%
+  assert.equal(feeAware.safeBreakEvenPct, 17.61);
+});
+
+test('fee-aware break-even reports unreachable progress explicitly', () => {
+  const result = calculateBreakEven({
+    accountSize: 25000,
+    challengeCost: 156,
+    bybitP1: 63,
+    bybitP2: 113,
+    bybitFunded: 113,
+    instrument: 'GBPUSD',
+    entryPrice: 1.333,
+    slPct: 0.22,
+    rrRatio: 0.5,
+    p1Target: 8,
+    p2Target: 5,
+    maxDrawdown: 10,
+    riskPerTrade: 2,
+    profitSplit: 0.8,
+    fundedRisk: 1,
+    fundedPayout: 8,
+    feesEnabled: true,
+    bybitFeePct: 0.055,
+    fpCommissionPerLot: 0,
+    winRate: 50,
+  });
+
+  assert.equal(result.status, 'unreachable');
+  assert.equal(result.breakEvenPct, null);
+  assert.match(result.message, /winrate/i);
+});
