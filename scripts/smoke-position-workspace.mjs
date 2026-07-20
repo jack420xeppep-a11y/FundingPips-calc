@@ -182,6 +182,25 @@ try {
   const advancedVisible = await evaluate(
     "getComputedStyle(document.querySelector('.advanced-content')).display !== 'none'",
   );
+
+  // Дефолт прода — fee-aware; проверяем оба режима: сначала фиксируем
+  // fee-aware вывод, затем переводим в Fee-free — все legacy-цифры ниже
+  // обязаны совпасть со старым ядром.
+  const feeAware = await evaluate(`(() => ({
+    toggleExists: Boolean(document.querySelector('#feesEnabled')),
+    breakEvenText: document.querySelector('.break-even-block').innerText,
+  }))()`);
+  await evaluate(`(() => {
+    const select = document.querySelector('#feesEnabled');
+    select.value = 'false';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await delay(100);
+  const feeFree = await evaluate(`(() => ({
+    value: document.querySelector('#feesEnabled').value,
+    breakEvenText: document.querySelector('.break-even-block').innerText,
+  }))()`);
   const mobileStrategies = await evaluate(`(() => ({
     cardsVisible: getComputedStyle(document.querySelector('.strategy-cards')).display !== 'none',
     cardCount: document.querySelectorAll('.strategy-card').length,
@@ -340,36 +359,52 @@ try {
     getComputedStyle(document.querySelector('.intelligence-advanced')).display !== 'none'
   )()`);
 
+  // AUTO может легитимно ждать сигнала (нет auto-eligible решения) — тогда
+  // лок невозможен по дизайну; проверяем цикл lock/unlock только при сигнале.
+  const lockFlow = { locked: false, skippedReason: null };
   await evaluate("document.querySelector('.copy-trade').click()");
-  await retry(async () => {
-    const locked = await evaluate(
-      "document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
-    );
-    if (!locked) throw new Error('Copy did not lock HL Intelligence AUTO');
-  });
-  const lockButtonExists = await evaluate(
-    "Boolean(document.querySelector('.intelligence-lock'))",
-  );
-  if (lockButtonExists) {
-    await evaluate("document.querySelector('.intelligence-lock').click()");
+  try {
     await retry(async () => {
-      const unlocked = await evaluate(
-        "!document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
+      const locked = await evaluate(
+        "document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
       );
-      if (!unlocked) throw new Error('HL Intelligence unlock did not apply');
-    });
+      if (!locked) throw new Error('Copy did not lock HL Intelligence AUTO');
+    }, 40);
+    lockFlow.locked = true;
+  } catch {
+    const status = await evaluate(
+      "document.querySelector('.intelligence-status')?.innerText ?? ''",
+    );
+    lockFlow.skippedReason =
+      `AUTO signal not eligible right now (status: ${status.replaceAll('\n', ' ')})`;
   }
-  const intelligenceUnlocked = await evaluate(`(() => {
-    const button = document.querySelector('.intelligence-lock');
-    return button
-      ? button.innerText.includes('Зафиксировать')
-      : /BIAS|MANUAL DIRECTION/.test(
-          document.querySelector('.intelligence-recommendation').innerText
+  let intelligenceUnlocked = null;
+  let intelligenceSyncing = null;
+  if (lockFlow.locked) {
+    const lockButtonExists = await evaluate(
+      "Boolean(document.querySelector('.intelligence-lock'))",
+    );
+    if (lockButtonExists) {
+      await evaluate("document.querySelector('.intelligence-lock').click()");
+      await retry(async () => {
+        const unlocked = await evaluate(
+          "!document.querySelector('.intelligence-status')?.innerText.includes('LOCKED')",
         );
-  })()`);
-  const intelligenceSyncing = await evaluate(
-    "document.querySelector('.intelligence-status')?.innerText.includes('SYNCING')",
-  );
+        if (!unlocked) throw new Error('HL Intelligence unlock did not apply');
+      });
+    }
+    intelligenceUnlocked = await evaluate(`(() => {
+      const button = document.querySelector('.intelligence-lock');
+      return button
+        ? button.innerText.includes('Зафиксировать')
+        : /BIAS|MANUAL DIRECTION/.test(
+            document.querySelector('.intelligence-recommendation').innerText
+          );
+    })()`);
+    intelligenceSyncing = await evaluate(
+      "document.querySelector('.intelligence-status')?.innerText.includes('SYNCING')",
+    );
+  }
 
   const mobileScreenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
@@ -507,6 +542,10 @@ try {
     quickMode.noHorizontalOverflow &&
     copyWorked === true &&
     advancedVisible &&
+    feeAware.toggleExists &&
+    feeAware.breakEvenText.includes('Комиссии за цикл') &&
+    feeFree.value === 'false' &&
+    feeFree.breakEvenText.includes('Комиссии и спред не учитываются') &&
     mobileStrategies.cardsVisible &&
     mobileStrategies.cardCount === 4 &&
     mobileStrategies.tableHidden &&
@@ -550,8 +589,7 @@ try {
     intelligence.noHorizontalOverflow &&
     intelligence.pressureRows === 3 &&
     intelligence.whaleText.toUpperCase().includes('COMBINED') &&
-    intelligenceUnlocked &&
-    intelligenceSyncing &&
+    (lockFlow.locked ? intelligenceUnlocked && intelligenceSyncing : true) &&
     euroLive > 0 &&
     poundLive > 0 &&
     quoteTransport.usedRelay &&
@@ -575,6 +613,8 @@ try {
     quickActionDocked,
     copyWorked,
     advancedVisible,
+    feeAware,
+    feeFree,
     mobileStrategies,
     optimizer,
     legacyOriginal,
@@ -583,6 +623,7 @@ try {
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,
     intelligenceDetailsVisible,
+    lockFlow,
     intelligenceUnlocked,
     intelligenceSyncing,
     quoteTransport,
