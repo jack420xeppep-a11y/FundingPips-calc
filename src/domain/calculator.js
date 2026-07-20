@@ -18,10 +18,15 @@ export const INSTRUMENTS = Object.freeze({
   XAUUSD: { contract: 100, defaultPrice: 2900, step: 0.01, decimals: 2 },
 });
 
+// Дефолты: Bybit TradFi perp (XAUUSDT, группа G9 с 16.06.2026) — тейкер
+// 0.0275%/мейкер 0%; крипто-перпы — 0.055%/0.02%. FundingPips 2-Step —
+// $5/лот round turn на FX и металлах (Zero — $7). FX-перпов на Bybit нет:
+// EURUSD/GBPUSD хеджируются на Bybit MT5, там издержки сидят в спреде —
+// закладывайте их в эти же поля.
 export const FEE_DEFAULTS = Object.freeze({
   feesEnabled: true,
-  bybitFeePct: 0.055,
-  fpCommissionPerLot: 0,
+  bybitFeePct: 0.0275,
+  fpCommissionPerLot: 5,
   winRate: 50,
 });
 

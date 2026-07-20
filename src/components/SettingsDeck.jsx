@@ -97,7 +97,7 @@ export default function SettingsDeck({ values, onChange }) {
               onChange={onChange}
               step="0.005"
               min="0"
-              hint="Тейкер 0.055 / мейкер 0.02"
+              hint="Gold perp: тейкер 0.0275, мейкер 0. Крипто: 0.055 / 0.02"
             />
             <Field
               id="fpCommissionPerLot"
@@ -106,7 +106,7 @@ export default function SettingsDeck({ values, onChange }) {
               onChange={onChange}
               step="0.5"
               min="0"
-              hint="Спред можно учесть надбавкой сюда"
+              hint="FundingPips 2-Step: $5 (FX и металлы), Zero: $7. Спред — надбавкой сюда"
             />
             <Field
               id="winRate"
