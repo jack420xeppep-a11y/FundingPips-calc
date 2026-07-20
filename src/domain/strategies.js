@@ -145,8 +145,8 @@ export function calculateBreakEven(input) {
   const cycleFees =
     input.feesEnabled === true
       ? round(
-          p1Econ.feeCost + p2Econ.feeCost +
-            fundedPerPct.feeCost * currentTargetPct,
+          p1Econ.overhead + p2Econ.overhead +
+            fundedPerPct.overhead * currentTargetPct,
         )
       : null;
 

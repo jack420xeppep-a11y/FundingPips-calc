@@ -18,14 +18,14 @@ export const INSTRUMENTS = Object.freeze({
   XAUUSD: { contract: 100, defaultPrice: 2900, step: 0.01, decimals: 2 },
 });
 
-// Дефолты: Bybit TradFi perp (XAUUSDT, группа G9 с 16.06.2026) — тейкер
-// 0.0275%/мейкер 0%; крипто-перпы — 0.055%/0.02%. FundingPips 2-Step —
-// $5/лот round turn на FX и металлах (Zero — $7). FX-перпов на Bybit нет:
-// EURUSD/GBPUSD хеджируются на Bybit MT5, там издержки сидят в спреде —
-// закладывайте их в эти же поля.
+// Дефолты: Bybit TradFi perp (XAUUSDT, группа G9 с 16.06.2026) — мейкер 0%
+// (дефолт: вход лимитками), тейкер 0.0275%; крипто-перпы — 0.055%/0.02%.
+// FundingPips 2-Step — $5/лот round turn на FX и металлах (Zero — $7).
+// FX-перпов на Bybit нет: EURUSD/GBPUSD хеджируются на Bybit MT5, там
+// издержки сидят в спреде — закладывайте их в эти же поля.
 export const FEE_DEFAULTS = Object.freeze({
   feesEnabled: true,
-  bybitFeePct: 0.0275,
+  bybitFeePct: 0,
   fpCommissionPerLot: 5,
   winRate: 50,
 });
@@ -82,13 +82,20 @@ export function calculatePhaseEconomics(input, targetPct, riskPct, stake) {
       trades: null,
       stakeCost: stakeCostBase,
       feeCost: 0,
+      overhead: 0,
       total: stakeCostBase,
     };
   }
 
   const costs = calculateTradeCosts(input, stake, riskPct);
   const rrRatio = Number(input.rrRatio);
-  const winRate = Math.min(99, Math.max(1, Number(input.winRate) || 50)) / 100;
+  // Пустое поле winrate — дефолт 50; введённое значение зажимается в [1, 99],
+  // чтобы 0 не подменялся молча дефолтом.
+  const rawWinRate = Number(input.winRate);
+  const winRate =
+    (input.winRate == null || input.winRate === '' || !Number.isFinite(rawWinRate)
+      ? 50
+      : Math.min(99, Math.max(1, rawWinRate))) / 100;
   const progressPerTrade =
     Number(riskPct) * (winRate * (rrRatio + 1) - 1) - costs.fpCommissionPct;
 
@@ -98,6 +105,7 @@ export function calculatePhaseEconomics(input, targetPct, riskPct, stake) {
       trades: null,
       stakeCost: stakeCostBase,
       feeCost: null,
+      overhead: null,
       total: null,
     };
   }
@@ -113,6 +121,9 @@ export function calculatePhaseEconomics(input, targetPct, riskPct, stake) {
     trades,
     stakeCost,
     feeCost,
+    // Полная наценка комиссий: прямые Bybit-fee плюс перерасход ставок,
+    // вызванный тем, что FP-комиссия съедает прогресс к цели.
+    overhead: feeCost + (stakeCost - stakeCostBase),
     total: stakeCost + feeCost,
   };
 }

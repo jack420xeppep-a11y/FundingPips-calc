@@ -97,7 +97,7 @@ export default function SettingsDeck({ values, onChange }) {
               onChange={onChange}
               step="0.005"
               min="0"
-              hint="Gold perp: тейкер 0.0275, мейкер 0. Крипто: 0.055 / 0.02"
+              hint="Gold perp: мейкер 0, тейкер 0.0275. Крипто: 0.055 / 0.02"
             />
             <Field
               id="fpCommissionPerLot"
