@@ -33,7 +33,7 @@ function PriceCell({ kind, label, value, decimals }) {
   );
 }
 
-function PlatformLeg({ kind, leg, decimals, rrRatio }) {
+function PlatformLeg({ kind, leg, decimals, rrRatio, fee = null }) {
   const isBybit = kind === 'bybit';
 
   return (
@@ -81,6 +81,9 @@ function PlatformLeg({ kind, leg, decimals, rrRatio }) {
             <span><b>RR</b> 1:{Number(rrRatio).toFixed(1)}</span>
           </>
         )}
+        {fee !== null && fee > 0 ? (
+          <span><b className="negative">FEE</b> ~{formatMoney(fee)}</span>
+        ) : null}
       </footer>
     </article>
   );
@@ -232,6 +235,7 @@ export default function PositionResult({
             leg={result.bybit}
             decimals={result.decimals}
             rrRatio={rrRatio}
+            fee={result.fees?.bybit ?? null}
           />
           <div className="hedge-axis" aria-hidden="true">
             <span>OPPOSING</span>
@@ -241,6 +245,7 @@ export default function PositionResult({
             leg={result.fundingPips}
             decimals={result.decimals}
             rrRatio={rrRatio}
+            fee={result.fees?.fundingPips ?? null}
           />
         </div>
       )}

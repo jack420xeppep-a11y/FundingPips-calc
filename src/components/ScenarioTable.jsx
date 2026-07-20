@@ -28,13 +28,13 @@ export default function ScenarioTable({ scenarios }) {
           </thead>
           <tbody>
             {scenarios.map((scenario) => (
-              <tr key={scenario.name}>
+              <tr key={scenario.name} title={scenario.message ?? undefined}>
                 <th scope="row">{scenario.name}</th>
                 <td className="negative">{scenario.bybitExpenses ? formatSignedMoney(-scenario.bybitExpenses) : '—'}</td>
                 <td className="negative">{formatSignedMoney(-scenario.challengeCost)}</td>
-                <td className="positive">{formatSignedMoney(scenario.bybitRecovery)}</td>
-                <td className="positive">{formatSignedMoney(scenario.fundingPipsPayout)}</td>
-                <td className={signedClass(scenario.total)}>{formatSignedMoney(scenario.total, 2)}</td>
+                <td className="positive">{scenario.bybitRecovery == null ? '—' : formatSignedMoney(scenario.bybitRecovery)}</td>
+                <td className="positive">{scenario.fundingPipsPayout == null ? '—' : formatSignedMoney(scenario.fundingPipsPayout)}</td>
+                <td className={signedClass(scenario.total)}>{scenario.total == null ? '—' : formatSignedMoney(scenario.total, 2)}</td>
               </tr>
             ))}
           </tbody>

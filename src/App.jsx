@@ -12,6 +12,7 @@ import SettingsDeck from './components/SettingsDeck.jsx';
 import StrategyLab from './components/StrategyLab.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import {
+  FEE_DEFAULTS,
   INSTRUMENTS,
   calculatePosition,
   calculateRecovery,
@@ -49,6 +50,7 @@ const initialPosition = {
   profitSplit: 0.8,
   fundedRisk: 1,
   fundedPayout: 8,
+  ...FEE_DEFAULTS,
   ...getAccountSettings('10k', 2, 1),
 };
 
