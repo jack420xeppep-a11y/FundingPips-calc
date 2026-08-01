@@ -349,6 +349,9 @@ try {
     amount: document.querySelector('#phaseAmount').value,
     text: document.querySelector('.phase-checkpoint').innerText,
     history: document.querySelector('.phase-history').innerText,
+    persisted: JSON.parse(
+      localStorage.getItem('calcpro-phase-ledgers-v1') ?? '{}'
+    )['flex:25k']?.p1,
   }))()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
@@ -648,6 +651,10 @@ try {
     flexCheckpoint.history.includes('FundingPips TP') &&
     flexCheckpoint.history.includes('Bybit TP') &&
     flexCheckpoint.history.includes('Bybit SL') &&
+    flexCheckpoint.persisted?.[0]?.outcome === 'sl' &&
+    flexCheckpoint.persisted?.[0]?.bybitStake === 63 &&
+    flexCheckpoint.persisted?.[1]?.outcome === 'tp' &&
+    flexCheckpoint.persisted?.[1]?.bybitStake === 63 &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&

@@ -27,6 +27,11 @@ import {
   updatePhaseLedger,
 } from './domain/propRules.js';
 import {
+  buildPhaseLedgerKey,
+  readPhaseLedgers,
+  writePhaseLedgers,
+} from './domain/phaseLedgerStorage.js';
+import {
   STRATEGY_GOALS,
   buildStrategyPresets,
   calculateBreakEven,
@@ -133,7 +138,7 @@ function usePersistedBoolean(key, fallback = false) {
 export default function App() {
   const [activeView, setActiveView] = useState('position');
   const [positionValues, setPositionValues] = useState(initialPosition);
-  const [phaseLedger, setPhaseLedger] = useState(() => createEmptyPhaseLedger());
+  const [phaseLedgers, setPhaseLedgers] = useState(() => readPhaseLedgers());
   const [phaseDay, setPhaseDay] = useState(1);
   const [recoveryValues, setRecoveryValues] = useState(initialRecovery);
   const [strategyGoal, setStrategyGoal] = useState('balanced');
@@ -150,6 +155,18 @@ export default function App() {
   const [intelligenceResumeAfter, setIntelligenceResumeAfter] = useState(null);
   const [theme, toggleTheme] = useTheme();
   const intelligenceLocked = Boolean(tradeSnapshot);
+  const phaseLedgerKey = buildPhaseLedgerKey(
+    positionValues.accountModel,
+    positionValues.accountPreset,
+  );
+  const phaseLedger = useMemo(
+    () => phaseLedgers[phaseLedgerKey] ?? createEmptyPhaseLedger(),
+    [phaseLedgerKey, phaseLedgers],
+  );
+
+  useEffect(() => {
+    writePhaseLedgers(phaseLedgers);
+  }, [phaseLedgers]);
 
   useEffect(() => {
     if (!tradeSnapshot) return;
@@ -361,23 +378,29 @@ export default function App() {
 
   const recordCheckpointDay = (entry) => {
     if (!['sl', 'tp'].includes(entry.outcome) || !(Number(entry.amount) > 0)) return;
-    setPhaseLedger((current) => updatePhaseLedger(
-      current,
-      positionValues.stage,
-      phaseDay,
-      {
-        ...entry,
-        bybitStake: position.status === 'ready' ? position.stake : 0,
-      },
-    ));
+    setPhaseLedgers((current) => ({
+      ...current,
+      [phaseLedgerKey]: updatePhaseLedger(
+        current[phaseLedgerKey] ?? createEmptyPhaseLedger(),
+        positionValues.stage,
+        phaseDay,
+        {
+          ...entry,
+          bybitStake: position.status === 'ready' ? position.stake : 0,
+        },
+      ),
+    }));
     setPhaseDay((current) => Math.min(3, current + 1));
   };
 
   const resetCheckpointStage = () => {
     const empty = createEmptyPhaseLedger();
-    setPhaseLedger((current) => ({
+    setPhaseLedgers((current) => ({
       ...current,
-      [positionValues.stage]: empty[positionValues.stage],
+      [phaseLedgerKey]: {
+        ...(current[phaseLedgerKey] ?? createEmptyPhaseLedger()),
+        [positionValues.stage]: empty[positionValues.stage],
+      },
     }));
     setPhaseDay(1);
   };
