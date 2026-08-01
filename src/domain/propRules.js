@@ -92,6 +92,7 @@ export function getPropRules({
   return {
     accountModel: model,
     modelLabel: rules.label,
+    accountSize: size,
     stage: normalizedStage,
     evaluation,
     targetPct,

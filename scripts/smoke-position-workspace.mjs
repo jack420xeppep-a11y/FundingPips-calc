@@ -288,6 +288,56 @@ try {
     activeProfile: document.querySelector('.active-strategy-bar').innerText,
   }))()`);
 
+  // Проверяем новый путь Flex на $25K: убыток первого дня и TP второго
+  // должны закрыть цель Phase 1, сохранив предупреждение о концентрации.
+  await evaluate(`(() => {
+    const changeSelect = (selector, value) => {
+      const field = document.querySelector(selector);
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    changeSelect('#accountModel', 'flex');
+    changeSelect('#accountPreset', '25k');
+    changeSelect('#phaseOutcome', 'sl');
+    const amount = document.querySelector('#phaseAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '1000');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await delay(100);
+  await evaluate(`(() => {
+    const changeSelect = (selector, value) => {
+      const field = document.querySelector(selector);
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    changeSelect('#phaseDay', '2');
+    changeSelect('#phaseOutcome', 'tp');
+    const amount = document.querySelector('#phaseAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '3500');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(
+      "document.querySelector('.phase-checkpoint')?.innerText.includes('Условия этапа выполнены')",
+    );
+    if (!ready) throw new Error('Flex $25K phase checkpoint is not ready');
+  });
+  const flexCheckpoint = await evaluate(`(() => ({
+    model: document.querySelector('#accountModel').value,
+    account: document.querySelector('#accountPreset').value,
+    target: document.querySelector('#p1Target').value,
+    dailyLoss: document.querySelector('#dailyLossLimit').value,
+    maxDrawdown: document.querySelector('#maxDrawdown').value,
+    day: document.querySelector('#phaseDay').value,
+    outcome: document.querySelector('#phaseOutcome').value,
+    amount: document.querySelector('#phaseAmount').value,
+    text: document.querySelector('.phase-checkpoint').innerText,
+  }))()`);
+
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
   await delay(100);
   await evaluate(`(() => {
@@ -405,6 +455,13 @@ try {
       "document.querySelector('.intelligence-status')?.innerText.includes('SYNCING')",
     );
   }
+
+  await evaluate(`(() => {
+    const checkpoint = document.querySelector('.phase-checkpoint');
+    window.scrollTo({ top: Math.max(0, checkpoint.offsetTop - 8), behavior: 'instant' });
+    return true;
+  })()`);
+  await delay(100);
 
   const mobileScreenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
@@ -537,7 +594,7 @@ try {
     quickActionDocked &&
     quickMode.readinessCount === 4 &&
     quickMode.activeProfile.toUpperCase().includes('СБАЛАНСИРОВАННАЯ') &&
-    quickMode.controlCount === 5 &&
+    quickMode.controlCount === 6 &&
     quickMode.advancedExpanded === 'false' &&
     quickMode.noHorizontalOverflow &&
     copyWorked === true &&
@@ -564,6 +621,16 @@ try {
     balancedRestored.funded === '45' &&
     balancedRestored.payout === '8' &&
     balancedRestored.activeProfile.toUpperCase().includes('СБАЛАНСИРОВАННАЯ') &&
+    flexCheckpoint.model === 'flex' &&
+    flexCheckpoint.account === '25k' &&
+    flexCheckpoint.target === '10' &&
+    flexCheckpoint.dailyLoss === '4' &&
+    flexCheckpoint.maxDrawdown === '12' &&
+    flexCheckpoint.day === '2' &&
+    flexCheckpoint.outcome === 'tp' &&
+    flexCheckpoint.amount === '3500' &&
+    flexCheckpoint.text.includes('+$2,500') &&
+    flexCheckpoint.text.includes('превысила 60% цели') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
@@ -619,6 +686,7 @@ try {
     optimizer,
     legacyOriginal,
     balancedRestored,
+    flexCheckpoint,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,

@@ -7,6 +7,7 @@ const readUi = async () => {
   const files = [
     './App.jsx',
     './components/PositionControls.jsx',
+    './components/PhaseCheckpoint.jsx',
     './components/ActiveStrategyBar.jsx',
     './components/IntelligencePanel.jsx',
     './components/IntelligenceStrip.jsx',
@@ -38,6 +39,7 @@ test('all controls from the original calculator are represented in React', async
     'fpDirection',
     'slPct',
     'stage',
+    'accountModel',
     'accountPreset',
     'p1Target',
     'p2Target',
@@ -59,6 +61,26 @@ test('all controls from the original calculator are represented in React', async
   ];
 
   for (const field of requiredFields) assert.match(app, new RegExp(field));
+});
+
+test('position workspace exposes a compact phase day ledger with explicit SL and TP amounts', async () => {
+  const app = await read('./App.jsx');
+  const controls = await read('./components/PositionControls.jsx');
+  const checkpoint = await read('./components/PhaseCheckpoint.jsx');
+  const styles = await read('./styles.css');
+
+  assert.match(controls, /2 STEP STANDARD/);
+  assert.match(controls, /2 STEP FLEX/);
+  assert.match(app, /calculatePhaseCheckpoint/);
+  assert.match(app, /updatePhaseLedger/);
+  assert.match(app, /<PhaseCheckpoint/);
+  assert.match(checkpoint, /День этапа/);
+  assert.match(checkpoint, /SL \/ убыток/);
+  assert.match(checkpoint, /TP \/ прибыль/);
+  assert.match(checkpoint, /Итог дня, \$/);
+  assert.match(checkpoint, /До цели/);
+  assert.match(checkpoint, /Запас до общего лимита/);
+  assert.match(styles, /\.phase-checkpoint/);
 });
 
 test('funded payout defaults to the recommended 8% break-even target', async () => {

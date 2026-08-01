@@ -4,6 +4,7 @@ import ActiveStrategyBar from './components/ActiveStrategyBar.jsx';
 import PositionControls from './components/PositionControls.jsx';
 import IntelligencePanel from './components/IntelligencePanel.jsx';
 import IntelligenceStrip from './components/IntelligenceStrip.jsx';
+import PhaseCheckpoint from './components/PhaseCheckpoint.jsx';
 import PositionResult from './components/PositionResult.jsx';
 import RecoveryView from './components/RecoveryView.jsx';
 import RiskRail from './components/RiskRail.jsx';
@@ -19,6 +20,12 @@ import {
   calculateScenarios,
   getAccountSettings,
 } from './domain/calculator.js';
+import {
+  calculatePhaseCheckpoint,
+  createEmptyPhaseLedger,
+  getPropModelPreset,
+  updatePhaseLedger,
+} from './domain/propRules.js';
 import {
   STRATEGY_GOALS,
   buildStrategyPresets,
@@ -42,14 +49,11 @@ const initialPosition = {
   slPct: 0.22,
   stage: 'p1',
   accountPreset: '10k',
-  p1Target: 8,
-  p2Target: 5,
-  maxDrawdown: 10,
   riskPerTrade: 2,
   rrRatio: 2,
-  profitSplit: 0.8,
   fundedRisk: 1,
   fundedPayout: 8,
+  ...getPropModelPreset('standard'),
   ...FEE_DEFAULTS,
   ...getAccountSettings('10k', 2, 1),
 };
@@ -129,6 +133,8 @@ function usePersistedBoolean(key, fallback = false) {
 export default function App() {
   const [activeView, setActiveView] = useState('position');
   const [positionValues, setPositionValues] = useState(initialPosition);
+  const [phaseLedger, setPhaseLedger] = useState(() => createEmptyPhaseLedger());
+  const [phaseDay, setPhaseDay] = useState(1);
   const [recoveryValues, setRecoveryValues] = useState(initialRecovery);
   const [strategyGoal, setStrategyGoal] = useState('balanced');
   const [recommendation, setRecommendation] = useState(null);
@@ -178,6 +184,15 @@ export default function App() {
   });
 
   const position = useMemo(() => calculatePosition(positionValues), [positionValues]);
+  const phaseCheckpoint = useMemo(() => calculatePhaseCheckpoint({
+    accountModel: positionValues.accountModel,
+    accountSize: positionValues.accountSize,
+    stage: positionValues.stage,
+    selectedDay: phaseDay,
+    ledger: phaseLedger,
+    profitSplit: positionValues.profitSplit,
+    fundedPayout: positionValues.fundedPayout,
+  }), [phaseDay, phaseLedger, positionValues]);
   const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
   const breakEven = useMemo(() => calculateBreakEven(positionValues), [positionValues]);
   const strategyPresets = useMemo(
@@ -324,6 +339,13 @@ export default function App() {
         };
       }
 
+      if (field === 'accountModel') {
+        return {
+          ...current,
+          ...getPropModelPreset(value),
+        };
+      }
+
       if (field === 'riskPerTrade' || field === 'fundedRisk') {
         const next = { ...current, [field]: value };
         return {
@@ -334,6 +356,24 @@ export default function App() {
 
       return { ...current, [field]: value };
     });
+  };
+
+  const updateCheckpointEntry = (entry) => {
+    setPhaseLedger((current) => updatePhaseLedger(
+      current,
+      positionValues.stage,
+      phaseDay,
+      entry,
+    ));
+  };
+
+  const resetCheckpointStage = () => {
+    const empty = createEmptyPhaseLedger();
+    setPhaseLedger((current) => ({
+      ...current,
+      [positionValues.stage]: empty[positionValues.stage],
+    }));
+    setPhaseDay(1);
   };
 
   const applyStrategy = (strategy) => {
@@ -437,6 +477,13 @@ export default function App() {
                 onIntelligenceChange={(enabled) => {
                   setIntelligenceEnabled(enabled);
                 }}
+              />
+              <PhaseCheckpoint
+                checkpoint={phaseCheckpoint}
+                selectedDay={phaseDay}
+                onDayChange={setPhaseDay}
+                onEntryChange={updateCheckpointEntry}
+                onReset={resetCheckpointStage}
               />
               <ActiveStrategyBar profile={activeStrategy} />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>

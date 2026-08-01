@@ -16,9 +16,11 @@ export default function RiskRail({ values, position, breakEven }) {
         <h2>Challenge limits</h2>
         <dl>
           <div><dt>Account</dt><dd>{accountLabel}</dd></div>
+          <div><dt>Model</dt><dd>{values.accountModel === 'flex' ? '2 Step Flex' : '2 Step Standard'}</dd></div>
           <div><dt>Challenge fee</dt><dd>{formatMoney(values.challengeCost)}</dd></div>
           <div><dt>Phase 1 target</dt><dd>{Number(values.p1Target).toFixed(2)}%</dd></div>
           <div><dt>Phase 2 target</dt><dd>{Number(values.p2Target).toFixed(2)}%</dd></div>
+          <div><dt>Daily loss</dt><dd className="negative">−{Number(values.dailyLossLimit).toFixed(2)}%</dd></div>
           <div><dt>Max drawdown</dt><dd className="negative">−{Number(values.maxDrawdown).toFixed(2)}%</dd></div>
           <div><dt>Profit split</dt><dd className="positive">{Number(values.profitSplit * 100).toFixed(0)}%</dd></div>
         </dl>

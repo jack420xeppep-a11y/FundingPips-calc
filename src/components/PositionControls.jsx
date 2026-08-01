@@ -131,6 +131,16 @@ export default function PositionControls({
           max="10"
         />
         <Field
+          id="accountModel"
+          label="Модель FP"
+          value={values.accountModel}
+          onChange={onChange}
+          options={[
+            { value: 'standard', label: '2 STEP STANDARD' },
+            { value: 'flex', label: '2 STEP FLEX' },
+          ]}
+        />
+        <Field
           id="stage"
           label="Этап"
           value={values.stage}

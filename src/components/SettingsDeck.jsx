@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { PROFIT_SPLIT_OPTIONS } from '../domain/propRules.js';
 import Field from './Field.jsx';
 
 export default function SettingsDeck({ values, onChange }) {
@@ -32,9 +33,10 @@ export default function SettingsDeck({ values, onChange }) {
                 { value: '100k', label: '$100K' },
               ]}
             />
-            <Field id="p1Target" label="Phase 1 цель, %" value={values.p1Target} onChange={onChange} step="1" min="1" />
-            <Field id="p2Target" label="Phase 2 цель, %" value={values.p2Target} onChange={onChange} step="1" min="1" />
-            <Field id="maxDrawdown" label="Макс. просадка, %" value={values.maxDrawdown} onChange={onChange} step="1" min="1" />
+            <Field id="p1Target" label="Phase 1 цель, %" value={values.p1Target} onChange={onChange} step="1" min="1" readOnly />
+            <Field id="p2Target" label="Phase 2 цель, %" value={values.p2Target} onChange={onChange} step="1" min="1" readOnly />
+            <Field id="dailyLossLimit" label="Дневной лимит, %" value={values.dailyLossLimit} onChange={onChange} step="1" min="1" readOnly />
+            <Field id="maxDrawdown" label="Макс. просадка, %" value={values.maxDrawdown} onChange={onChange} step="1" min="1" readOnly />
             <Field id="riskPerTrade" label="Риск на сделку, %" value={values.riskPerTrade} onChange={onChange} step="0.5" min="0.1" />
             <Field id="rrRatio" label="RR, TP / SL" value={values.rrRatio} onChange={onChange} step="0.5" min="0.5" />
             <Field
@@ -42,12 +44,7 @@ export default function SettingsDeck({ values, onChange }) {
               label="Profit split"
               value={values.profitSplit}
               onChange={onChange}
-              options={[
-                { value: 0.6, label: 'Weekly — 60%' },
-                { value: 0.8, label: 'Bi-Weekly — 80%' },
-                { value: 0.9, label: 'On Demand — 90%' },
-                { value: 1, label: 'Monthly — 100%' },
-              ]}
+              options={PROFIT_SPLIT_OPTIONS[values.accountModel] ?? PROFIT_SPLIT_OPTIONS.standard}
             />
             <Field id="fundedRisk" label="Риск Funded, %" value={values.fundedRisk} onChange={onChange} step="0.5" min="0.1" />
           </div>
