@@ -14,7 +14,9 @@ const statusCopy = {
 export default function PhaseCheckpoint({
   checkpoint,
   selectedDay,
+  challengeCost,
   onDayChange,
+  onChallengeCostChange,
   onRecord,
   onReset,
 }) {
@@ -83,6 +85,15 @@ export default function PhaseCheckpoint({
             min="0"
             readOnly={draft.outcome === 'none'}
             hint="Чистый закрытый P&L этого дня"
+          />
+          <Field
+            id="challengeCost"
+            label="Цена пропа, $"
+            value={challengeCost}
+            onChange={(_field, value) => onChallengeCostChange(value)}
+            step="1"
+            min="0"
+            hint="Отдельно от P&L и лимитов счёта"
           />
         </div>
 

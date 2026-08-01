@@ -111,11 +111,13 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
     outcome: 'sl',
     amount: 1_000,
     bybitStake: 63,
+    bybitLoss: 126,
   });
   ledger = updatePhaseLedger(ledger, 'p1', 2, {
     outcome: 'tp',
     amount: 3_500,
     bybitStake: 63,
+    bybitLoss: 126,
   });
 
   const checkpoint = calculatePhaseCheckpoint({
@@ -126,6 +128,7 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
     ledger,
     profitSplit: 0.85,
     bybitStake: 99,
+    bybitLoss: 198,
   });
 
   assert.deepEqual(checkpoint.recordedDays, [
@@ -141,10 +144,58 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
       outcome: 'tp',
       fpPnl: 3_500,
       bybitOutcome: 'sl',
-      bybitPnl: -63,
+      bybitPnl: -126,
     },
   ]);
-  assert.equal(checkpoint.bybitPnl, 0);
+  assert.equal(checkpoint.bybitPnl, -63);
+});
+
+test('prop purchase price affects cash result without changing FundingPips limits', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'sl', amount: 385, bybitStake: 25,
+  });
+  ledger = updatePhaseLedger(ledger, 'p1', 2, {
+    outcome: 'sl', amount: 480, bybitStake: 25,
+  });
+  ledger = updatePhaseLedger(ledger, 'p1', 3, {
+    outcome: 'sl', amount: 135, bybitStake: 25,
+  });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'p1',
+    selectedDay: 3,
+    ledger,
+    profitSplit: 0.8,
+    bybitStake: 25,
+    challengeCost: 66,
+  });
+
+  assert.equal(checkpoint.realizedPnl, -1_000);
+  assert.equal(checkpoint.maxLossBreach, true);
+  assert.equal(checkpoint.bybitPnl, 75);
+  assert.equal(checkpoint.propCost, 66);
+  assert.equal(checkpoint.netCashResult, 9);
+
+  ledger = updatePhaseLedger(ledger, 'p2', 1, {
+    outcome: 'tp', amount: 500, bybitStake: 45, bybitLoss: 90,
+  });
+  const phaseTwo = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'p2',
+    selectedDay: 1,
+    ledger,
+    profitSplit: 0.8,
+    bybitStake: 45,
+    bybitLoss: 90,
+    challengeCost: 66,
+  });
+
+  assert.equal(phaseTwo.bybitPnl, -15);
+  assert.equal(phaseTwo.netCashResult, -81);
 });
 
 test('checkpoint identifies a hard loss breach and a separate 60% concentration warning', () => {

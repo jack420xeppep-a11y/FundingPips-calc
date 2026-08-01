@@ -210,6 +210,8 @@ export default function App() {
     profitSplit: positionValues.profitSplit,
     fundedPayout: positionValues.fundedPayout,
     bybitStake: position.status === 'ready' ? position.stake : 0,
+    bybitLoss: position.status === 'ready' ? position.bybit.stopLossPnl : 0,
+    challengeCost: positionValues.challengeCost,
   }), [phaseDay, phaseLedger, position, positionValues]);
   const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
   const breakEven = useMemo(() => calculateBreakEven(positionValues), [positionValues]);
@@ -366,9 +368,15 @@ export default function App() {
 
       if (field === 'riskPerTrade' || field === 'fundedRisk') {
         const next = { ...current, [field]: value };
+        const accountSettings = getAccountSettings(
+          next.accountPreset,
+          next.riskPerTrade,
+          next.fundedRisk,
+        );
         return {
           ...next,
-          ...getAccountSettings(next.accountPreset, next.riskPerTrade, next.fundedRisk),
+          ...accountSettings,
+          challengeCost: current.challengeCost,
         };
       }
 
@@ -387,6 +395,7 @@ export default function App() {
         {
           ...entry,
           bybitStake: position.status === 'ready' ? position.stake : 0,
+          bybitLoss: position.status === 'ready' ? position.bybit.stopLossPnl : 0,
         },
       ),
     }));
@@ -510,7 +519,9 @@ export default function App() {
               <PhaseCheckpoint
                 checkpoint={phaseCheckpoint}
                 selectedDay={phaseDay}
+                challengeCost={positionValues.challengeCost}
                 onDayChange={setPhaseDay}
+                onChallengeCostChange={(value) => updatePosition('challengeCost', value)}
                 onRecord={recordCheckpointDay}
                 onReset={resetCheckpointStage}
               />

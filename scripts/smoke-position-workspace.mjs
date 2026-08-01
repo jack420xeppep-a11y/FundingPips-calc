@@ -299,6 +299,10 @@ try {
     changeSelect('#accountModel', 'flex');
     changeSelect('#accountPreset', '25k');
     changeSelect('#phaseOutcome', 'sl');
+    const propCost = document.querySelector('#challengeCost');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(propCost, '70');
+    propCost.dispatchEvent(new Event('input', { bubbles: true }));
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
       .set.call(amount, '1000');
@@ -344,6 +348,7 @@ try {
     target: document.querySelector('#p1Target').value,
     dailyLoss: document.querySelector('#dailyLossLimit').value,
     maxDrawdown: document.querySelector('#maxDrawdown').value,
+    propCost: document.querySelector('#challengeCost').value,
     day: document.querySelector('#phaseDay').value,
     outcome: document.querySelector('#phaseOutcome').value,
     amount: document.querySelector('#phaseAmount').value,
@@ -642,6 +647,7 @@ try {
     flexCheckpoint.target === '10' &&
     flexCheckpoint.dailyLoss === '4' &&
     flexCheckpoint.maxDrawdown === '12' &&
+    flexCheckpoint.propCost === '70' &&
     flexCheckpoint.day === '3' &&
     flexCheckpoint.outcome === 'none' &&
     flexCheckpoint.amount === '0' &&
@@ -651,10 +657,17 @@ try {
     flexCheckpoint.history.includes('FundingPips TP') &&
     flexCheckpoint.history.includes('Bybit TP') &&
     flexCheckpoint.history.includes('Bybit SL') &&
+    flexCheckpoint.history.includes('−$126') &&
+    flexCheckpoint.history.includes('Цена пропа') &&
+    flexCheckpoint.history.includes('Чистыми') &&
+    flexCheckpoint.history.includes('−$70') &&
+    flexCheckpoint.history.includes('−$133') &&
     flexCheckpoint.persisted?.[0]?.outcome === 'sl' &&
     flexCheckpoint.persisted?.[0]?.bybitStake === 63 &&
+    flexCheckpoint.persisted?.[0]?.bybitLoss === 126 &&
     flexCheckpoint.persisted?.[1]?.outcome === 'tp' &&
     flexCheckpoint.persisted?.[1]?.bybitStake === 63 &&
+    flexCheckpoint.persisted?.[1]?.bybitLoss === 126 &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&

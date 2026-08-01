@@ -14,11 +14,21 @@ export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
           <span className="section-code">Recorded timeline</span>
           <h3 id="phase-history-title">История дней</h3>
         </div>
-        <span>
-          Эффект Bybit <b className={checkpoint.bybitPnl >= 0 ? 'positive' : 'negative'}>
-            {formatSignedMoney(checkpoint.bybitPnl)}
-          </b>
-        </span>
+        <div className="phase-history__economics" aria-label="Денежный итог журнала">
+          <span>
+            Эффект Bybit от старта <b className={checkpoint.bybitPnl >= 0 ? 'positive' : 'negative'}>
+              {formatSignedMoney(checkpoint.bybitPnl)}
+            </b>
+          </span>
+          <span>
+            Цена пропа <b className="negative">{formatSignedMoney(-checkpoint.propCost)}</b>
+          </span>
+          <span>
+            Чистыми от старта <b className={checkpoint.netCashResult >= 0 ? 'positive' : 'negative'}>
+              {formatSignedMoney(checkpoint.netCashResult)}
+            </b>
+          </span>
+        </div>
       </header>
       <div className="phase-history__list" role="list">
         {[1, 2, 3].map((day) => {

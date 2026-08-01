@@ -32,7 +32,12 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
 
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
 const DAY_COUNT = 3;
-const EMPTY_DAY = Object.freeze({ outcome: 'none', amount: 0, bybitStake: null });
+const EMPTY_DAY = Object.freeze({
+  outcome: 'none',
+  amount: 0,
+  bybitStake: null,
+  bybitLoss: null,
+});
 
 const round = (value, decimals = 2) => {
   const factor = 10 ** decimals;
@@ -49,7 +54,12 @@ const normalizeDay = (entry) => {
     Number.isFinite(rawBybitStake)
     ? round(Math.max(0, rawBybitStake))
     : null;
-  return { outcome, amount: round(amount), bybitStake };
+  const rawBybitLoss = Number(entry?.bybitLoss);
+  const bybitLoss = entry?.bybitLoss !== null && entry?.bybitLoss !== undefined &&
+    Number.isFinite(rawBybitLoss)
+    ? round(Math.max(0, rawBybitLoss))
+    : null;
+  return { outcome, amount: round(amount), bybitStake, bybitLoss };
 };
 
 export function getPropModelPreset(accountModel = 'standard') {
@@ -149,6 +159,8 @@ export function calculatePhaseCheckpoint({
   profitSplit,
   fundedPayout = 8,
   bybitStake = 0,
+  bybitLoss = 0,
+  challengeCost = 0,
 } = {}) {
   const rules = getPropRules({
     accountModel,
@@ -188,20 +200,37 @@ export function calculatePhaseCheckpoint({
     entry.outcome === 'tp' && entry.amount > rules.concentrationThreshold
   ));
   const mirroredStake = Math.max(0, Number(bybitStake) || 0);
-  const recordedDays = entries.flatMap((entry, index) => {
-    if (entry.outcome === 'none' || entry.amount <= 0) return [];
+  const mirroredLoss = Math.max(0, Number(bybitLoss) || mirroredStake);
+  const buildMirroredDay = (entry, index) => {
+    if (entry.outcome === 'none' || entry.amount <= 0) return null;
     const fpPnl = signedPnl(entry);
     const fpLost = entry.outcome === 'sl';
     const dayStake = entry.bybitStake ?? mirroredStake;
-    return [{
+    const dayLoss = entry.bybitLoss ?? (
+      mirroredStake > 0 ? dayStake * mirroredLoss / mirroredStake : mirroredLoss
+    );
+    return {
       day: index + 1,
       outcome: entry.outcome,
       fpPnl: round(fpPnl),
       bybitOutcome: fpLost ? 'tp' : 'sl',
-      bybitPnl: round(fpLost ? dayStake : -dayStake),
-    }];
+      bybitPnl: round(fpLost ? dayStake : -dayLoss),
+    };
+  };
+  const recordedDays = entries.flatMap((entry, index) => {
+    const record = buildMirroredDay(entry, index);
+    return record ? [record] : [];
   });
-  const bybitPnl = recordedDays.reduce((total, entry) => total + entry.bybitPnl, 0);
+  const accountedStages = STAGES.slice(0, STAGES.indexOf(rules.stage) + 1);
+  const bybitPnl = accountedStages.reduce((total, accountedStage) => {
+    const stageEntries = Array.from({ length: DAY_COUNT }, (_, index) => (
+      normalizeDay(ledger?.[accountedStage]?.[index])
+    ));
+    return total + stageEntries.reduce((stageTotal, entry, index) => (
+      stageTotal + (buildMirroredDay(entry, index)?.bybitPnl ?? 0)
+    ), 0);
+  }, 0);
+  const propCost = round(Math.max(0, Number(challengeCost) || 0));
 
   let status = 'tracking';
   if (dailyBreach || maxLossBreach) status = 'breached';
@@ -228,6 +257,8 @@ export function calculatePhaseCheckpoint({
     concentrationTriggered,
     recordedDays,
     bybitPnl: round(bybitPnl),
+    propCost,
+    netCashResult: round(bybitPnl - propCost),
     status,
   };
 }

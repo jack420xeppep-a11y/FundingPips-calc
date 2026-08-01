@@ -566,7 +566,7 @@ html[data-theme="dark"] .theme-toggle__knob {
 
 .phase-checkpoint__controls {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .phase-checkpoint__controls .field {
@@ -702,16 +702,23 @@ html[data-theme="dark"] .theme-toggle__knob {
   font-size: 0.88rem;
 }
 
-.phase-history__head > span {
+.phase-history__economics {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.phase-history__economics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 0.62rem;
 }
 
-.phase-history__head > span b {
+.phase-history__economics b {
   font-size: 0.82rem;
 }
 
@@ -2792,6 +2799,12 @@ tbody tr:hover {
   .phase-history__head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .phase-history__economics {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
   }
 
   .phase-history__list {
