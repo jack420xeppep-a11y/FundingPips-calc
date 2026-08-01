@@ -32,7 +32,7 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
 
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
 const DAY_COUNT = 3;
-const EMPTY_DAY = Object.freeze({ outcome: 'none', amount: 0 });
+const EMPTY_DAY = Object.freeze({ outcome: 'none', amount: 0, bybitStake: null });
 
 const round = (value, decimals = 2) => {
   const factor = 10 ** decimals;
@@ -44,7 +44,12 @@ const modelRules = (model) => MODEL_RULES[model] ?? MODEL_RULES.standard;
 const normalizeDay = (entry) => {
   const outcome = ['sl', 'tp'].includes(entry?.outcome) ? entry.outcome : 'none';
   const amount = Math.max(0, Number(entry?.amount) || 0);
-  return { outcome, amount: round(amount) };
+  const rawBybitStake = Number(entry?.bybitStake);
+  const bybitStake = entry?.bybitStake !== null && entry?.bybitStake !== undefined &&
+    Number.isFinite(rawBybitStake)
+    ? round(Math.max(0, rawBybitStake))
+    : null;
+  return { outcome, amount: round(amount), bybitStake };
 };
 
 export function getPropModelPreset(accountModel = 'standard') {
@@ -143,6 +148,7 @@ export function calculatePhaseCheckpoint({
   ledger = createEmptyPhaseLedger(),
   profitSplit,
   fundedPayout = 8,
+  bybitStake = 0,
 } = {}) {
   const rules = getPropRules({
     accountModel,
@@ -181,6 +187,21 @@ export function calculatePhaseCheckpoint({
   const concentrationTriggered = rules.concentrationThreshold !== null && included.some((entry) => (
     entry.outcome === 'tp' && entry.amount > rules.concentrationThreshold
   ));
+  const mirroredStake = Math.max(0, Number(bybitStake) || 0);
+  const recordedDays = entries.flatMap((entry, index) => {
+    if (entry.outcome === 'none' || entry.amount <= 0) return [];
+    const fpPnl = signedPnl(entry);
+    const fpLost = entry.outcome === 'sl';
+    const dayStake = entry.bybitStake ?? mirroredStake;
+    return [{
+      day: index + 1,
+      outcome: entry.outcome,
+      fpPnl: round(fpPnl),
+      bybitOutcome: fpLost ? 'tp' : 'sl',
+      bybitPnl: round(fpLost ? dayStake : -dayStake),
+    }];
+  });
+  const bybitPnl = recordedDays.reduce((total, entry) => total + entry.bybitPnl, 0);
 
   let status = 'tracking';
   if (dailyBreach || maxLossBreach) status = 'breached';
@@ -205,6 +226,8 @@ export function calculatePhaseCheckpoint({
     dailyBreach,
     maxLossBreach,
     concentrationTriggered,
+    recordedDays,
+    bybitPnl: round(bybitPnl),
     status,
   };
 }

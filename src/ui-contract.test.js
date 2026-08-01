@@ -8,6 +8,7 @@ const readUi = async () => {
     './App.jsx',
     './components/PositionControls.jsx',
     './components/PhaseCheckpoint.jsx',
+    './components/PhaseHistory.jsx',
     './components/ActiveStrategyBar.jsx',
     './components/IntelligencePanel.jsx',
     './components/IntelligenceStrip.jsx',
@@ -67,6 +68,7 @@ test('position workspace exposes a compact phase day ledger with explicit SL and
   const app = await read('./App.jsx');
   const controls = await read('./components/PositionControls.jsx');
   const checkpoint = await read('./components/PhaseCheckpoint.jsx');
+  const history = await read('./components/PhaseHistory.jsx');
   const styles = await read('./styles.css');
 
   assert.match(controls, /2 STEP STANDARD/);
@@ -78,6 +80,11 @@ test('position workspace exposes a compact phase day ledger with explicit SL and
   assert.match(checkpoint, /SL \/ убыток/);
   assert.match(checkpoint, /TP \/ прибыль/);
   assert.match(checkpoint, /Итог дня, \$/);
+  assert.match(checkpoint, /Записать день/);
+  assert.match(checkpoint, /<PhaseHistory/);
+  assert.match(history, /История дней/);
+  assert.match(history, /Эффект Bybit/);
+  assert.match(checkpoint, /onRecord/);
   assert.match(checkpoint, /До цели/);
   assert.match(checkpoint, /Запас до общего лимита/);
   assert.match(styles, /\.phase-checkpoint/);

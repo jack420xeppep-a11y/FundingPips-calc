@@ -105,6 +105,48 @@ test('phase ledger preserves each selected day and calculates the illustrated SL
   assert.equal(checkpoint.selectedDayLossLimit, 1_200);
 });
 
+test('recorded day history keeps prior FP results and their mirrored Bybit effect', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'sl',
+    amount: 1_000,
+    bybitStake: 63,
+  });
+  ledger = updatePhaseLedger(ledger, 'p1', 2, {
+    outcome: 'tp',
+    amount: 3_500,
+    bybitStake: 63,
+  });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'flex',
+    accountSize: 25_000,
+    stage: 'p1',
+    selectedDay: 2,
+    ledger,
+    profitSplit: 0.85,
+    bybitStake: 99,
+  });
+
+  assert.deepEqual(checkpoint.recordedDays, [
+    {
+      day: 1,
+      outcome: 'sl',
+      fpPnl: -1_000,
+      bybitOutcome: 'tp',
+      bybitPnl: 63,
+    },
+    {
+      day: 2,
+      outcome: 'tp',
+      fpPnl: 3_500,
+      bybitOutcome: 'sl',
+      bybitPnl: -63,
+    },
+  ]);
+  assert.equal(checkpoint.bybitPnl, 0);
+});
+
 test('checkpoint identifies a hard loss breach and a separate 60% concentration warning', () => {
   let lossLedger = createEmptyPhaseLedger();
   lossLedger = updatePhaseLedger(lossLedger, 'p1', 1, { outcome: 'sl', amount: 3_000 });

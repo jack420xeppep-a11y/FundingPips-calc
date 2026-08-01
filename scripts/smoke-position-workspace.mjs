@@ -303,27 +303,39 @@ try {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
       .set.call(amount, '1000');
     amount.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.phase-checkpoint__record').click();
     return true;
   })()`);
-  await delay(100);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#phaseDay').value === '2' &&
+      document.querySelector('.phase-history').innerText.includes('FundingPips SL') &&
+      document.querySelector('.phase-history').innerText.includes('Bybit TP') &&
+      document.querySelector('.phase-history').innerText.includes('+$63')
+    )()`);
+    if (!ready) throw new Error('First Flex day was not recorded');
+  });
   await evaluate(`(() => {
     const changeSelect = (selector, value) => {
       const field = document.querySelector(selector);
       field.value = value;
       field.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    changeSelect('#phaseDay', '2');
     changeSelect('#phaseOutcome', 'tp');
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
       .set.call(amount, '3500');
     amount.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.phase-checkpoint__record').click();
     return true;
   })()`);
   await retry(async () => {
-    const ready = await evaluate(
-      "document.querySelector('.phase-checkpoint')?.innerText.includes('Условия этапа выполнены')",
-    );
+    const ready = await evaluate(`(() =>
+      document.querySelector('#phaseDay').value === '3' &&
+      document.querySelector('.phase-checkpoint')?.innerText.includes('Условия этапа выполнены') &&
+      document.querySelector('.phase-history').innerText.includes('FundingPips TP') &&
+      document.querySelector('.phase-history').innerText.includes('Bybit SL')
+    )()`);
     if (!ready) throw new Error('Flex $25K phase checkpoint is not ready');
   });
   const flexCheckpoint = await evaluate(`(() => ({
@@ -336,6 +348,7 @@ try {
     outcome: document.querySelector('#phaseOutcome').value,
     amount: document.querySelector('#phaseAmount').value,
     text: document.querySelector('.phase-checkpoint').innerText,
+    history: document.querySelector('.phase-history').innerText,
   }))()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
@@ -626,11 +639,15 @@ try {
     flexCheckpoint.target === '10' &&
     flexCheckpoint.dailyLoss === '4' &&
     flexCheckpoint.maxDrawdown === '12' &&
-    flexCheckpoint.day === '2' &&
-    flexCheckpoint.outcome === 'tp' &&
-    flexCheckpoint.amount === '3500' &&
+    flexCheckpoint.day === '3' &&
+    flexCheckpoint.outcome === 'none' &&
+    flexCheckpoint.amount === '0' &&
     flexCheckpoint.text.includes('+$2,500') &&
     flexCheckpoint.text.includes('превысила 60% цели') &&
+    flexCheckpoint.history.includes('FundingPips SL') &&
+    flexCheckpoint.history.includes('FundingPips TP') &&
+    flexCheckpoint.history.includes('Bybit TP') &&
+    flexCheckpoint.history.includes('Bybit SL') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&

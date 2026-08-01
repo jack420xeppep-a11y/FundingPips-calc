@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { formatMoney, formatSignedMoney } from '../format.js';
 import Field from './Field.jsx';
+import PhaseHistory from './PhaseHistory.jsx';
 
 const statusCopy = {
   tracking: ['Этап в работе', 'Добавьте результат выбранного дня'],
@@ -14,10 +15,21 @@ export default function PhaseCheckpoint({
   checkpoint,
   selectedDay,
   onDayChange,
-  onEntryChange,
+  onRecord,
   onReset,
 }) {
   const entry = checkpoint.selectedEntry;
+  const [draft, setDraft] = useState(() => ({
+    outcome: entry.outcome,
+    amount: entry.amount,
+  }));
+  useEffect(() => {
+    setDraft({ outcome: entry.outcome, amount: entry.amount });
+  }, [checkpoint.stage, entry.amount, entry.outcome, selectedDay]);
+  const canRecord = ['sl', 'tp'].includes(draft.outcome) && Number(draft.amount) > 0;
+  const selectedDayRecorded = checkpoint.recordedDays.some(
+    (record) => record.day === Number(selectedDay),
+  );
   const [statusTitle, statusDetail] = statusCopy[checkpoint.status] ?? statusCopy.tracking;
   const dayRequirement = checkpoint.requiredTradingDays > 0
     ? `${checkpoint.tradingDays}/${checkpoint.requiredTradingDays} торговых дней`
@@ -54,8 +66,8 @@ export default function PhaseCheckpoint({
           <Field
             id="phaseOutcome"
             label="Что случилось"
-            value={entry.outcome}
-            onChange={(_field, value) => onEntryChange({ ...entry, outcome: value })}
+            value={draft.outcome}
+            onChange={(_field, value) => setDraft((current) => ({ ...current, outcome: value }))}
             options={[
               { value: 'none', label: 'Не задано' },
               { value: 'sl', label: 'SL / убыток' },
@@ -65,16 +77,24 @@ export default function PhaseCheckpoint({
           <Field
             id="phaseAmount"
             label="Итог дня, $"
-            value={entry.amount}
-            onChange={(_field, value) => onEntryChange({ ...entry, amount: value })}
+            value={draft.amount}
+            onChange={(_field, value) => setDraft((current) => ({ ...current, amount: value }))}
             step="1"
             min="0"
-            readOnly={entry.outcome === 'none'}
+            readOnly={draft.outcome === 'none'}
             hint="Чистый закрытый P&L этого дня"
           />
         </div>
 
         <div className="phase-checkpoint__rules" aria-label="Правила выбранного этапа">
+          <button
+            className="phase-checkpoint__record"
+            type="button"
+            disabled={!canRecord}
+            onClick={() => onRecord(draft)}
+          >
+            {selectedDayRecorded ? 'Обновить день' : 'Записать день'}
+          </button>
           <span>Цель <b>{checkpoint.targetPct}%</b></span>
           <span>День <b>−{checkpoint.dailyLossPct}%</b></span>
           <span>Общий <b>−{checkpoint.maxLossPct}%</b></span>
@@ -105,6 +125,12 @@ export default function PhaseCheckpoint({
           </dd>
         </div>
       </dl>
+
+      <PhaseHistory
+        checkpoint={checkpoint}
+        selectedDay={selectedDay}
+        onDayChange={onDayChange}
+      />
 
       {checkpoint.concentrationTriggered ? (
         <p className="phase-checkpoint__warning">

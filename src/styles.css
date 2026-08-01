@@ -611,6 +611,29 @@ html[data-theme="dark"] .theme-toggle__knob {
   outline: 0;
 }
 
+.phase-checkpoint__rules .phase-checkpoint__record {
+  flex-basis: 100%;
+  min-height: 34px;
+  border-color: var(--color-accent);
+  color: var(--color-surface);
+  background: var(--color-accent);
+  font-weight: 800;
+}
+
+.phase-checkpoint__rules .phase-checkpoint__record:hover,
+.phase-checkpoint__rules .phase-checkpoint__record:focus-visible {
+  color: var(--color-surface);
+  background: color-mix(in srgb, var(--color-accent) 88%, var(--color-ink));
+}
+
+.phase-checkpoint__rules .phase-checkpoint__record:disabled {
+  border-color: var(--color-line);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .phase-checkpoint__summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -659,6 +682,100 @@ html[data-theme="dark"] .theme-toggle__knob {
 .phase-checkpoint__warning {
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+
+.phase-history {
+  border-top: 1px solid var(--color-line);
+}
+
+.phase-history__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.phase-history__head h3 {
+  margin: 3px 0 0;
+  font-size: 0.88rem;
+}
+
+.phase-history__head > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.phase-history__head > span b {
+  font-size: 0.82rem;
+}
+
+.phase-history__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phase-history__list > div:not(:last-child) {
+  border-right: 1px solid var(--color-line);
+}
+
+.phase-history__list button {
+  display: grid;
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  color: var(--color-ink);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.phase-history__list button:hover,
+.phase-history__list button:focus-visible,
+.phase-history__list button.is-selected {
+  border-left-color: var(--color-accent);
+  outline: 0;
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.phase-history__day {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.phase-history__list button > span:not(.phase-history__day) {
+  display: grid;
+  gap: 3px;
+}
+
+.phase-history__list small {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+}
+
+.phase-history__list b {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.phase-history__empty {
+  grid-column: span 2;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
 }
 
 .field {
@@ -2670,6 +2787,20 @@ tbody tr:hover {
 
   .phase-checkpoint__summary > div:nth-child(n + 3) {
     border-top: 1px solid var(--color-line);
+  }
+
+  .phase-history__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .phase-history__list {
+    grid-template-columns: 1fr;
+  }
+
+  .phase-history__list > div:not(:last-child) {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
   }
 
   .section-head {

@@ -192,7 +192,8 @@ export default function App() {
     ledger: phaseLedger,
     profitSplit: positionValues.profitSplit,
     fundedPayout: positionValues.fundedPayout,
-  }), [phaseDay, phaseLedger, positionValues]);
+    bybitStake: position.status === 'ready' ? position.stake : 0,
+  }), [phaseDay, phaseLedger, position, positionValues]);
   const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
   const breakEven = useMemo(() => calculateBreakEven(positionValues), [positionValues]);
   const strategyPresets = useMemo(
@@ -358,13 +359,18 @@ export default function App() {
     });
   };
 
-  const updateCheckpointEntry = (entry) => {
+  const recordCheckpointDay = (entry) => {
+    if (!['sl', 'tp'].includes(entry.outcome) || !(Number(entry.amount) > 0)) return;
     setPhaseLedger((current) => updatePhaseLedger(
       current,
       positionValues.stage,
       phaseDay,
-      entry,
+      {
+        ...entry,
+        bybitStake: position.status === 'ready' ? position.stake : 0,
+      },
     ));
+    setPhaseDay((current) => Math.min(3, current + 1));
   };
 
   const resetCheckpointStage = () => {
@@ -482,7 +488,7 @@ export default function App() {
                 checkpoint={phaseCheckpoint}
                 selectedDay={phaseDay}
                 onDayChange={setPhaseDay}
-                onEntryChange={updateCheckpointEntry}
+                onRecord={recordCheckpointDay}
                 onReset={resetCheckpointStage}
               />
               <ActiveStrategyBar profile={activeStrategy} />
