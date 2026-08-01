@@ -15,20 +15,52 @@ export default function PhaseCheckpoint({
   checkpoint,
   selectedDay,
   challengeCost,
+  officialChallengeCost,
+  discountedPurchase,
+  suggestedBybitWin,
+  suggestedBybitLoss,
   onDayChange,
   onChallengeCostChange,
+  onDiscountedPurchaseChange,
   onRecord,
   onReset,
 }) {
   const entry = checkpoint.selectedEntry;
+  const recordedEntry = checkpoint.recordedDays.find(
+    (record) => record.day === Number(selectedDay),
+  );
+  const resolveBybitAmount = () => entry.bybitAmount ?? Math.abs(
+    recordedEntry?.bybitPnl ?? (
+      entry.outcome === 'sl'
+        ? Number(suggestedBybitWin) || 0
+        : entry.outcome === 'tp'
+          ? Number(suggestedBybitLoss) || 0
+          : 0
+    ),
+  );
   const [draft, setDraft] = useState(() => ({
     outcome: entry.outcome,
     amount: entry.amount,
+    bybitAmount: resolveBybitAmount(),
   }));
   useEffect(() => {
-    setDraft({ outcome: entry.outcome, amount: entry.amount });
-  }, [checkpoint.stage, entry.amount, entry.outcome, selectedDay]);
-  const canRecord = ['sl', 'tp'].includes(draft.outcome) && Number(draft.amount) > 0;
+    setDraft({
+      outcome: entry.outcome,
+      amount: entry.amount,
+      bybitAmount: resolveBybitAmount(),
+    });
+  }, [
+    checkpoint.stage,
+    entry.amount,
+    entry.bybitAmount,
+    entry.outcome,
+    recordedEntry?.bybitPnl,
+    selectedDay,
+    suggestedBybitLoss,
+    suggestedBybitWin,
+  ]);
+  const canRecord = ['sl', 'tp'].includes(draft.outcome) &&
+    Number(draft.amount) > 0 && Number(draft.bybitAmount) >= 0;
   const selectedDayRecorded = checkpoint.recordedDays.some(
     (record) => record.day === Number(selectedDay),
   );
@@ -69,7 +101,15 @@ export default function PhaseCheckpoint({
             id="phaseOutcome"
             label="Что случилось"
             value={draft.outcome}
-            onChange={(_field, value) => setDraft((current) => ({ ...current, outcome: value }))}
+            onChange={(_field, value) => setDraft((current) => ({
+              ...current,
+              outcome: value,
+              bybitAmount: value === 'sl'
+                ? Number(suggestedBybitWin) || 0
+                : value === 'tp'
+                  ? Number(suggestedBybitLoss) || 0
+                  : 0,
+            }))}
             options={[
               { value: 'none', label: 'Не задано' },
               { value: 'sl', label: 'SL / убыток' },
@@ -87,13 +127,41 @@ export default function PhaseCheckpoint({
             hint="Чистый закрытый P&L этого дня"
           />
           <Field
+            id="phaseBybitAmount"
+            label="Итог Bybit, $"
+            value={draft.bybitAmount}
+            onChange={(_field, value) => setDraft((current) => ({
+              ...current,
+              bybitAmount: value,
+            }))}
+            step="1"
+            min="0"
+            readOnly={draft.outcome === 'none'}
+            hint="Фактический итог всех сделок Bybit за день"
+          />
+          <Field
             id="challengeCost"
-            label="Цена пропа, $"
+            label="Оплачено за проп, $"
             value={challengeCost}
             onChange={(_field, value) => onChallengeCostChange(value)}
             step="1"
             min="0"
-            hint="Отдельно от P&L и лимитов счёта"
+            readOnly={!discountedPurchase}
+            hint={`Базовая цена ${formatMoney(officialChallengeCost)} · отдельно от P&L`}
+            after={(
+              <label className="prop-discount-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(discountedPurchase)}
+                  onChange={(event) => onDiscountedPurchaseChange(event.target.checked)}
+                />
+                <span className="prop-discount-box" aria-hidden="true">✓</span>
+                <span className="prop-discount-copy">
+                  <b>Скидка / restart</b>
+                  <small>Phase 1 −15% · Phase 2 −10% · Master −7% (кроме 100K)</small>
+                </span>
+              </label>
+            )}
           />
         </div>
 

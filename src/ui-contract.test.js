@@ -80,8 +80,12 @@ test('position workspace exposes a compact phase day ledger with explicit SL and
   assert.match(checkpoint, /SL \/ убыток/);
   assert.match(checkpoint, /TP \/ прибыль/);
   assert.match(checkpoint, /Итог дня, \$/);
+  assert.match(checkpoint, /Итог Bybit, \$/);
+  assert.match(checkpoint, /Фактический итог всех сделок Bybit за день/);
   assert.match(checkpoint, /challengeCost/);
-  assert.match(checkpoint, /Цена пропа, \$/);
+  assert.match(checkpoint, /Оплачено за проп, \$/);
+  assert.match(checkpoint, /Скидка \/ restart/);
+  assert.match(checkpoint, /Phase 1 −15% · Phase 2 −10% · Master −7% \(кроме 100K\)/);
   assert.match(checkpoint, /Записать день/);
   assert.match(checkpoint, /<PhaseHistory/);
   assert.match(history, /История дней/);

@@ -35,6 +35,7 @@ const DAY_COUNT = 3;
 const EMPTY_DAY = Object.freeze({
   outcome: 'none',
   amount: 0,
+  bybitAmount: null,
   bybitStake: null,
   bybitLoss: null,
 });
@@ -49,6 +50,11 @@ const modelRules = (model) => MODEL_RULES[model] ?? MODEL_RULES.standard;
 const normalizeDay = (entry) => {
   const outcome = ['sl', 'tp'].includes(entry?.outcome) ? entry.outcome : 'none';
   const amount = Math.max(0, Number(entry?.amount) || 0);
+  const rawBybitAmount = Number(entry?.bybitAmount);
+  const bybitAmount = entry?.bybitAmount !== null && entry?.bybitAmount !== undefined &&
+    Number.isFinite(rawBybitAmount)
+    ? round(Math.max(0, rawBybitAmount))
+    : null;
   const rawBybitStake = Number(entry?.bybitStake);
   const bybitStake = entry?.bybitStake !== null && entry?.bybitStake !== undefined &&
     Number.isFinite(rawBybitStake)
@@ -59,7 +65,7 @@ const normalizeDay = (entry) => {
     Number.isFinite(rawBybitLoss)
     ? round(Math.max(0, rawBybitLoss))
     : null;
-  return { outcome, amount: round(amount), bybitStake, bybitLoss };
+  return { outcome, amount: round(amount), bybitAmount, bybitStake, bybitLoss };
 };
 
 export function getPropModelPreset(accountModel = 'standard') {
@@ -209,12 +215,15 @@ export function calculatePhaseCheckpoint({
     const dayLoss = entry.bybitLoss ?? (
       mirroredStake > 0 ? dayStake * mirroredLoss / mirroredStake : mirroredLoss
     );
+    const actualBybitAmount = entry.bybitAmount;
     return {
       day: index + 1,
       outcome: entry.outcome,
       fpPnl: round(fpPnl),
       bybitOutcome: fpLost ? 'tp' : 'sl',
-      bybitPnl: round(fpLost ? dayStake : -dayLoss),
+      bybitPnl: round(fpLost
+        ? actualBybitAmount ?? dayStake
+        : -(actualBybitAmount ?? dayLoss)),
     };
   };
   const recordedDays = entries.flatMap((entry, index) => {

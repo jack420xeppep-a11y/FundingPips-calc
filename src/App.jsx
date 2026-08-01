@@ -58,6 +58,7 @@ const initialPosition = {
   rrRatio: 2,
   fundedRisk: 1,
   fundedPayout: 8,
+  discountedPurchase: false,
   ...getPropModelPreset('standard'),
   ...FEE_DEFAULTS,
   ...getAccountSettings('10k', 2, 1),
@@ -201,6 +202,9 @@ export default function App() {
   });
 
   const position = useMemo(() => calculatePosition(positionValues), [positionValues]);
+  const officialChallengeCost = useMemo(() => (
+    getAccountSettings(positionValues.accountPreset).challengeCost
+  ), [positionValues.accountPreset]);
   const phaseCheckpoint = useMemo(() => calculatePhaseCheckpoint({
     accountModel: positionValues.accountModel,
     accountSize: positionValues.accountSize,
@@ -356,6 +360,7 @@ export default function App() {
           ...current,
           accountPreset: value,
           ...getAccountSettings(value, current.riskPerTrade, current.fundedRisk),
+          discountedPurchase: false,
         };
       }
 
@@ -363,6 +368,8 @@ export default function App() {
         return {
           ...current,
           ...getPropModelPreset(value),
+          challengeCost: getAccountSettings(current.accountPreset).challengeCost,
+          discountedPurchase: false,
         };
       }
 
@@ -382,6 +389,17 @@ export default function App() {
 
       return { ...current, [field]: value };
     });
+  };
+
+  const updateDiscountedPurchase = (enabled) => {
+    setRecommendation(null);
+    setPositionValues((current) => ({
+      ...current,
+      discountedPurchase: Boolean(enabled),
+      challengeCost: enabled
+        ? current.challengeCost
+        : getAccountSettings(current.accountPreset).challengeCost,
+    }));
   };
 
   const recordCheckpointDay = (entry) => {
@@ -520,8 +538,13 @@ export default function App() {
                 checkpoint={phaseCheckpoint}
                 selectedDay={phaseDay}
                 challengeCost={positionValues.challengeCost}
+                officialChallengeCost={officialChallengeCost}
+                discountedPurchase={positionValues.discountedPurchase}
+                suggestedBybitWin={position.status === 'ready' ? position.stake : 0}
+                suggestedBybitLoss={position.status === 'ready' ? position.bybit.stopLossPnl : 0}
                 onDayChange={setPhaseDay}
                 onChallengeCostChange={(value) => updatePosition('challengeCost', value)}
+                onDiscountedPurchaseChange={updateDiscountedPurchase}
                 onRecord={recordCheckpointDay}
                 onReset={resetCheckpointStage}
               />

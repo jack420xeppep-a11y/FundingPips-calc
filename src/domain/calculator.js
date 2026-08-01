@@ -1,3 +1,5 @@
+// Базовые цены 2 Step Standard; промокод или reset меняют только фактически
+// оплаченную сумму в журнале: https://fundingpips.com/2-step-standard
 export const ACCOUNTS = Object.freeze({
   '10k': { size: 10000, challenge: 66, p1: 25, p2: 45, funded: 45 },
   '25k': { size: 25000, challenge: 156, p1: 63, p2: 113, funded: 113 },

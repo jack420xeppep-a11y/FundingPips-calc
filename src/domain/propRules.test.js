@@ -150,16 +150,16 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
   assert.equal(checkpoint.bybitPnl, -63);
 });
 
-test('prop purchase price affects cash result without changing FundingPips limits', () => {
+test('actual daily Bybit totals produce the illustrated $59 net result after prop cost', () => {
   let ledger = createEmptyPhaseLedger();
   ledger = updatePhaseLedger(ledger, 'p1', 1, {
-    outcome: 'sl', amount: 385, bybitStake: 25,
+    outcome: 'sl', amount: 385, bybitStake: 25, bybitAmount: 50,
   });
   ledger = updatePhaseLedger(ledger, 'p1', 2, {
-    outcome: 'sl', amount: 480, bybitStake: 25,
+    outcome: 'sl', amount: 480, bybitStake: 25, bybitAmount: 50,
   });
   ledger = updatePhaseLedger(ledger, 'p1', 3, {
-    outcome: 'sl', amount: 135, bybitStake: 25,
+    outcome: 'sl', amount: 135, bybitStake: 25, bybitAmount: 25,
   });
 
   const checkpoint = calculatePhaseCheckpoint({
@@ -175,9 +175,9 @@ test('prop purchase price affects cash result without changing FundingPips limit
 
   assert.equal(checkpoint.realizedPnl, -1_000);
   assert.equal(checkpoint.maxLossBreach, true);
-  assert.equal(checkpoint.bybitPnl, 75);
+  assert.equal(checkpoint.bybitPnl, 125);
   assert.equal(checkpoint.propCost, 66);
-  assert.equal(checkpoint.netCashResult, 9);
+  assert.equal(checkpoint.netCashResult, 59);
 
   ledger = updatePhaseLedger(ledger, 'p2', 1, {
     outcome: 'tp', amount: 500, bybitStake: 45, bybitLoss: 90,
@@ -194,8 +194,8 @@ test('prop purchase price affects cash result without changing FundingPips limit
     challengeCost: 66,
   });
 
-  assert.equal(phaseTwo.bybitPnl, -15);
-  assert.equal(phaseTwo.netCashResult, -81);
+  assert.equal(phaseTwo.bybitPnl, 35);
+  assert.equal(phaseTwo.netCashResult, -31);
 });
 
 test('checkpoint identifies a hard loss breach and a separate 60% concentration warning', () => {

@@ -299,6 +299,7 @@ try {
     changeSelect('#accountModel', 'flex');
     changeSelect('#accountPreset', '25k');
     changeSelect('#phaseOutcome', 'sl');
+    document.querySelector('.prop-discount-toggle input').click();
     const propCost = document.querySelector('#challengeCost');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
       .set.call(propCost, '70');
@@ -663,9 +664,11 @@ try {
     flexCheckpoint.history.includes('−$70') &&
     flexCheckpoint.history.includes('−$133') &&
     flexCheckpoint.persisted?.[0]?.outcome === 'sl' &&
+    flexCheckpoint.persisted?.[0]?.bybitAmount === 63 &&
     flexCheckpoint.persisted?.[0]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[0]?.bybitLoss === 126 &&
     flexCheckpoint.persisted?.[1]?.outcome === 'tp' &&
+    flexCheckpoint.persisted?.[1]?.bybitAmount === 126 &&
     flexCheckpoint.persisted?.[1]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[1]?.bybitLoss === 126 &&
     gold.instrument === 'XAUUSD' &&
