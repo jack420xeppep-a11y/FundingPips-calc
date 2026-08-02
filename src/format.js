@@ -11,10 +11,23 @@ export const formatSignedMoney = (value, maximumFractionDigits = 0) => {
   return `${number > 0 ? '+' : '−'}${formatMoney(Math.abs(number), maximumFractionDigits)}`;
 };
 
+export const formatMoneyFixed = (value, fractionDigits = 2) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Number(value) || 0);
+
+export const formatSignedMoneyFixed = (value, fractionDigits = 2) => {
+  const number = Number(value) || 0;
+  if (number === 0) return '—';
+  return `${number > 0 ? '+' : '−'}${formatMoneyFixed(Math.abs(number), fractionDigits)}`;
+};
+
 export const formatPrice = (value, decimals = 5) =>
   Number(value).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     useGrouping: false,
   });
-

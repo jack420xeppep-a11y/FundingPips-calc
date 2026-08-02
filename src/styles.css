@@ -604,21 +604,42 @@ html[data-theme="dark"] .theme-toggle__knob {
   font-size: 0.54rem;
 }
 
-.phase-checkpoint__reset {
+.prop-purchase-discount {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 14px;
-  padding: 11px 16px;
-  border-top: 1px solid var(--color-line);
-  color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface));
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
+  gap: 7px;
+  margin-top: 8px;
 }
 
-.phase-checkpoint__reset small {
-  grid-column: 1 / -1;
+.prop-purchase-discount > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
   color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
+.prop-purchase-discount input[type="checkbox"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+  accent-color: var(--color-accent);
+}
+
+.prop-purchase-discount > label[for="purchaseDiscountPct"] {
+  display: grid;
+  grid-template-columns: 1fr 58px;
+}
+
+.prop-purchase-discount input[type="number"] {
+  width: 58px;
+  min-height: 28px;
+  padding: 0 6px;
+  text-align: right;
 }
 
 .phase-checkpoint__rules {
@@ -716,6 +737,80 @@ html[data-theme="dark"] .theme-toggle__knob {
   font-weight: 800;
 }
 
+.phase-guidance {
+  border-top: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-accent) 2%, var(--color-surface));
+}
+
+.phase-guidance > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.phase-guidance h3 {
+  margin: 3px 0 0;
+  font-size: 0.88rem;
+}
+
+.phase-guidance > header > strong {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.phase-guidance__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phase-guidance__grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 11px 16px;
+  border-right: 1px solid var(--color-line);
+}
+
+.phase-guidance__grid > div:last-child {
+  border-right: 0;
+}
+
+.phase-guidance__grid span,
+.phase-guidance__grid small,
+.phase-guidance__policy {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  line-height: 1.45;
+}
+
+.phase-guidance__grid b {
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.phase-guidance__policy {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-line);
+}
+
+.phase-guidance__policy strong {
+  flex: 0 0 auto;
+  color: var(--color-ink);
+}
+
+.phase-guidance__policy.is-warning {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+
 .phase-checkpoint__warning,
 .phase-checkpoint__note {
   margin: 0;
@@ -772,6 +867,10 @@ html[data-theme="dark"] .theme-toggle__knob {
 .phase-history__list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phase-history__list.has-four-days {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .phase-history__list > div:not(:last-child) {
@@ -2844,6 +2943,21 @@ tbody tr:hover {
     border-top: 1px solid var(--color-line);
   }
 
+  .phase-guidance > header,
+  .phase-guidance__policy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .phase-guidance__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phase-guidance__grid > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+
   .phase-history__head {
     align-items: flex-start;
     flex-direction: column;
@@ -2855,7 +2969,8 @@ tbody tr:hover {
     gap: 8px;
   }
 
-  .phase-history__list {
+  .phase-history__list,
+  .phase-history__list.has-four-days {
     grid-template-columns: 1fr;
   }
 

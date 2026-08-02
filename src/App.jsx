@@ -58,6 +58,8 @@ const initialPosition = {
   rrRatio: 2,
   fundedRisk: 1,
   fundedPayout: 8,
+  purchaseDiscountEnabled: false,
+  purchaseDiscountPct: 0,
   ...getPropModelPreset('standard'),
   ...FEE_DEFAULTS,
   ...getAccountSettings('10k', 2, 1),
@@ -201,6 +203,14 @@ export default function App() {
   });
 
   const position = useMemo(() => calculatePosition(positionValues), [positionValues]);
+  const economicsValues = useMemo(() => ({
+    ...positionValues,
+    challengeCost: Number(positionValues.challengeCost) * (
+      1 - (positionValues.purchaseDiscountEnabled
+        ? Math.min(100, Math.max(0, Number(positionValues.purchaseDiscountPct) || 0))
+        : 0) / 100
+    ),
+  }), [positionValues]);
   const phaseCheckpoint = useMemo(() => calculatePhaseCheckpoint({
     accountModel: positionValues.accountModel,
     accountSize: positionValues.accountSize,
@@ -212,12 +222,15 @@ export default function App() {
     bybitStake: position.status === 'ready' ? position.stake : 0,
     bybitLoss: position.status === 'ready' ? position.bybit.stopLossPnl : 0,
     challengeCost: positionValues.challengeCost,
+    purchaseDiscountPct: positionValues.purchaseDiscountEnabled
+      ? positionValues.purchaseDiscountPct
+      : 0,
   }), [phaseDay, phaseLedger, position, positionValues]);
-  const scenarios = useMemo(() => calculateScenarios(positionValues), [positionValues]);
-  const breakEven = useMemo(() => calculateBreakEven(positionValues), [positionValues]);
+  const scenarios = useMemo(() => calculateScenarios(economicsValues), [economicsValues]);
+  const breakEven = useMemo(() => calculateBreakEven(economicsValues), [economicsValues]);
   const strategyPresets = useMemo(
-    () => buildStrategyPresets(positionValues),
-    [positionValues],
+    () => buildStrategyPresets(economicsValues),
+    [economicsValues],
   );
   const activeStrategy = useMemo(() => {
     const preset = strategyPresets.find((strategy) => (
@@ -392,7 +405,7 @@ export default function App() {
       [phaseLedgerKey]: updatePhaseLedger(
         current[phaseLedgerKey] ?? createEmptyPhaseLedger(),
         positionValues.stage,
-        phaseDay,
+        phaseCheckpoint.selectedDay,
         {
           ...entry,
           bybitStake: position.status === 'ready' ? position.stake : 0,
@@ -400,7 +413,14 @@ export default function App() {
         },
       ),
     }));
-    setPhaseDay((current) => Math.min(3, current + 1));
+    setPhaseDay((current) => Math.min(phaseCheckpoint.dayCount, current + 1));
+  };
+
+  const updatePurchaseDiscount = (field, value) => {
+    setPositionValues((current) => ({
+      ...current,
+      [field]: field === 'purchaseDiscountEnabled' ? Boolean(value) : value,
+    }));
   };
 
   const resetCheckpointStage = () => {
@@ -519,11 +539,14 @@ export default function App() {
               />
               <PhaseCheckpoint
                 checkpoint={phaseCheckpoint}
-                selectedDay={phaseDay}
+                selectedDay={phaseCheckpoint.selectedDay}
                 challengeCost={positionValues.challengeCost}
+                purchaseDiscountEnabled={positionValues.purchaseDiscountEnabled}
+                purchaseDiscountPct={positionValues.purchaseDiscountPct}
                 suggestedBybitWin={position.status === 'ready' ? position.stake : 0}
                 suggestedBybitLoss={position.status === 'ready' ? position.bybit.stopLossPnl : 0}
                 onDayChange={setPhaseDay}
+                onPurchaseDiscountChange={updatePurchaseDiscount}
                 onRecord={recordCheckpointDay}
                 onReset={resetCheckpointStage}
               />
@@ -618,7 +641,7 @@ export default function App() {
                       presets={strategyPresets}
                       activeStrategyId={activeStrategy.id}
                       onOptimize={() => setRecommendation(
-                        optimizeStrategy(positionValues, strategyGoal),
+                        optimizeStrategy(economicsValues, strategyGoal),
                       )}
                       onApply={applyStrategy}
                     />

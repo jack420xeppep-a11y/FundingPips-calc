@@ -6,7 +6,6 @@ import {
   createEmptyPhaseLedger,
   getPropModelPreset,
   getPropRules,
-  getResetOffer,
   updatePhaseLedger,
 } from './propRules.js';
 
@@ -81,6 +80,71 @@ test('Standard requires three trading days while Flex 95 requires three profitab
   assert.equal(flex85.requiredProfitableDays, 0);
   assert.equal(flex95.requiredTradingDays, 0);
   assert.equal(flex95.requiredProfitableDays, 3);
+  assert.deepEqual(standard.lossPlanPct, [4, 4, 2]);
+  assert.equal(standard.dayCount, 3);
+  assert.deepEqual(flex85.lossPlanPct, [3, 3, 3, 3]);
+  assert.equal(flex85.dayCount, 4);
+});
+
+test('working loss plan reserves the remaining Standard drawdown across 4, 4 and 2 percent days', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, { outcome: 'sl', amount: 395 });
+
+  const dayTwo = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'p1',
+    selectedDay: 2,
+    ledger,
+    challengeCost: 66,
+  });
+
+  assert.equal(dayTwo.dayOpeningBalance, 9_605);
+  assert.equal(dayTwo.officialSelectedDayLossLimit, 480.25);
+  assert.equal(dayTwo.plannedLossPct, 4);
+  assert.equal(dayTwo.selectedDayLossLimit, 400);
+  assert.equal(dayTwo.recommendedTpAmount, 1_195);
+
+  ledger = updatePhaseLedger(ledger, 'p1', 2, { outcome: 'sl', amount: 385 });
+  const dayThree = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'p1',
+    selectedDay: 3,
+    ledger,
+    challengeCost: 66,
+  });
+
+  assert.equal(dayThree.dayOpeningBalance, 9_220);
+  assert.equal(dayThree.officialSelectedDayLossLimit, 461);
+  assert.equal(dayThree.remainingLossRoomBeforeDay, 220);
+  assert.equal(dayThree.plannedLossPct, 2);
+  assert.equal(dayThree.selectedDayLossLimit, 200);
+  assert.equal(dayThree.recommendedTpAmount, 1_580);
+});
+
+test('Flex uses a four-day 3 percent buffer plan inside official 4 and 12 percent limits', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, { outcome: 'sl', amount: 300 });
+  ledger = updatePhaseLedger(ledger, 'p1', 2, { outcome: 'sl', amount: 300 });
+  ledger = updatePhaseLedger(ledger, 'p1', 3, { outcome: 'sl', amount: 300 });
+  ledger = updatePhaseLedger(ledger, 'p1', 4, { outcome: 'sl', amount: 300 });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'flex',
+    accountSize: 10_000,
+    stage: 'p1',
+    selectedDay: 4,
+    ledger,
+    challengeCost: 66,
+  });
+
+  assert.equal(checkpoint.dayCount, 4);
+  assert.equal(checkpoint.dayOpeningBalance, 9_100);
+  assert.equal(checkpoint.officialSelectedDayLossLimit, 364);
+  assert.equal(checkpoint.selectedDayLossLimit, 300);
+  assert.equal(checkpoint.recommendedTpAmount, 1_900);
+  assert.equal(checkpoint.maxLossBreach, true);
 });
 
 test('phase ledger preserves each selected day and calculates the illustrated SL then TP path', () => {
@@ -103,7 +167,8 @@ test('phase ledger preserves each selected day and calculates the illustrated SL
   assert.equal(checkpoint.tradingDays, 2);
   assert.equal(checkpoint.status, 'target_reached_days_pending');
   assert.equal(checkpoint.dayOpeningBalance, 24_000);
-  assert.equal(checkpoint.selectedDayLossLimit, 1_200);
+  assert.equal(checkpoint.selectedDayLossLimit, 1_000);
+  assert.equal(checkpoint.officialSelectedDayLossLimit, 1_200);
 });
 
 test('recorded day history keeps prior FP results and their mirrored Bybit effect', () => {
@@ -225,28 +290,41 @@ test('Standard scheme calculates illustrated Bybit outcomes without manual daily
   assert.equal(phaseTwo.netCashResult, 84);
 });
 
-test('reset discount is offered only after breach and does not replace original prop cost', () => {
-  assert.equal(getResetOffer({ stage: 'p1', status: 'tracking', purchasePrice: 66 }), null);
-  assert.deepEqual(getResetOffer({
-    stage: 'p1',
-    status: 'breached',
+test('manual purchase discount changes the initial prop cost without changing hedge P&L', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, { outcome: 'sl', amount: 400 });
+  ledger = updatePhaseLedger(ledger, 'p1', 2, { outcome: 'sl', amount: 400 });
+  ledger = updatePhaseLedger(ledger, 'p1', 3, { outcome: 'sl', amount: 200 });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
     accountSize: 10_000,
-    purchasePrice: 66,
-  }), {
     stage: 'p1',
-    label: 'Phase 1',
-    discountPct: 15,
-    purchasePrice: 66,
-    resetPrice: 56.1,
-    restartStage: 'p1',
-    expiresInDays: 7,
+    selectedDay: 3,
+    ledger,
+    challengeCost: 66,
+    purchaseDiscountPct: 15,
   });
-  assert.equal(getResetOffer({
-    stage: 'funded',
-    status: 'breached',
-    accountSize: 100_000,
-    purchasePrice: 529,
-  }), null);
+
+  assert.equal(checkpoint.bybitPnl, 125);
+  assert.equal(checkpoint.propBaseCost, 66);
+  assert.equal(checkpoint.purchaseDiscountPct, 15);
+  assert.equal(checkpoint.propCost, 56.1);
+  assert.equal(checkpoint.netCashResult, 68.9);
+});
+
+test('25K recommendation exposes the official 60 percent concentration consequence', () => {
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 25_000,
+    stage: 'p1',
+    selectedDay: 1,
+    challengeCost: 156,
+  });
+
+  assert.equal(checkpoint.concentrationThreshold, 1_200);
+  assert.equal(checkpoint.recommendedTpAmount, 2_000);
+  assert.equal(checkpoint.recommendedTpTriggersConcentration, true);
 });
 
 test('checkpoint identifies a hard loss breach and a separate 60% concentration warning', () => {

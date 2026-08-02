@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { formatMoney, formatSignedMoney } from '../format.js';
+import { formatMoney, formatMoneyFixed, formatSignedMoney } from '../format.js';
 import { getSchemeBybitPnl } from '../domain/propRules.js';
 import Field from './Field.jsx';
 import PhaseHistory from './PhaseHistory.jsx';
@@ -16,9 +16,12 @@ export default function PhaseCheckpoint({
   checkpoint,
   selectedDay,
   challengeCost,
+  purchaseDiscountEnabled,
+  purchaseDiscountPct,
   suggestedBybitWin,
   suggestedBybitLoss,
   onDayChange,
+  onPurchaseDiscountChange,
   onRecord,
   onReset,
 }) {
@@ -84,11 +87,10 @@ export default function PhaseCheckpoint({
             label="День этапа"
             value={selectedDay}
             onChange={(_field, value) => onDayChange(value)}
-            options={[
-              { value: 1, label: 'ДЕНЬ 1' },
-              { value: 2, label: 'ДЕНЬ 2' },
-              { value: 3, label: 'ДЕНЬ 3' },
-            ]}
+            options={Array.from({ length: checkpoint.dayCount }, (_, index) => ({
+              value: index + 1,
+              label: `ДЕНЬ ${index + 1}`,
+            }))}
           />
           <Field
             id="phaseOutcome"
@@ -97,6 +99,11 @@ export default function PhaseCheckpoint({
             onChange={(_field, value) => setDraft((current) => ({
               ...current,
               outcome: value,
+              amount: value === 'sl'
+                ? checkpoint.selectedDayLossLimit
+                : value === 'tp'
+                  ? checkpoint.recommendedTpAmount
+                  : 0,
             }))}
             options={[
               { value: 'none', label: 'Не задано' },
@@ -128,12 +135,47 @@ export default function PhaseCheckpoint({
           <Field
             id="challengeCost"
             label="Цена пропа, $"
-            value={challengeCost}
+            value={checkpoint.propCost}
             onChange={() => {}}
             step="1"
             min="0"
             readOnly
-            hint="Исходная покупка · отдельно от P&L"
+            hint={purchaseDiscountEnabled
+              ? `База ${formatMoney(challengeCost)} · к оплате ${formatMoneyFixed(checkpoint.propCost)}`
+              : 'Базовая цена · отдельно от P&L'}
+            after={(
+              <div className="prop-purchase-discount">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(purchaseDiscountEnabled)}
+                    onChange={(event) => onPurchaseDiscountChange(
+                      'purchaseDiscountEnabled',
+                      event.target.checked,
+                    )}
+                  />
+                  <span>Куплен со скидкой</span>
+                </label>
+                {purchaseDiscountEnabled ? (
+                  <label htmlFor="purchaseDiscountPct">
+                    <span>Скидка покупки, %</span>
+                    <input
+                      id="purchaseDiscountPct"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={purchaseDiscountPct}
+                      onChange={(event) => onPurchaseDiscountChange(
+                        'purchaseDiscountPct',
+                        Number(event.target.value),
+                      )}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            )}
           />
         </div>
 
@@ -154,20 +196,6 @@ export default function PhaseCheckpoint({
         </div>
       </div>
 
-      {checkpoint.resetOffer ? (
-        <div className="phase-checkpoint__reset" role="status">
-          <strong>Reset после breach</strong>
-          <span>
-            {checkpoint.resetOffer.label}: −{checkpoint.resetOffer.discountPct}% ·{' '}
-            {formatMoney(checkpoint.resetOffer.resetPrice, 2)} · доступен 7 дней
-          </span>
-          <small>
-            Текущий итог уже учитывает исходную покупку {formatMoney(checkpoint.propCost)};
-            будущий reset в него не вычитается.
-          </small>
-        </div>
-      ) : null}
-
       <dl className="phase-checkpoint__summary">
         <div>
           <dt>P&amp;L этапа</dt>
@@ -180,7 +208,7 @@ export default function PhaseCheckpoint({
           <dd>{formatMoney(checkpoint.remainingToTarget)}</dd>
         </div>
         <div>
-          <dt>Лимит выбранного дня</dt>
+          <dt>SL по схеме дня</dt>
           <dd>{formatMoney(checkpoint.selectedDayLossLimit)}</dd>
         </div>
         <div>
@@ -190,6 +218,57 @@ export default function PhaseCheckpoint({
           </dd>
         </div>
       </dl>
+
+      <section className="phase-guidance" aria-labelledby="phase-guidance-title">
+        <header>
+          <div>
+            <span className="section-code">Rules / route guard</span>
+            <h3 id="phase-guidance-title">Правила и подсказки</h3>
+          </div>
+          <strong>{checkpoint.lossPlanPct.join(' / ')}%</strong>
+        </header>
+        <div className="phase-guidance__grid">
+          <div>
+            <span>Рабочая схема</span>
+            <b>SL дня до {formatMoney(checkpoint.selectedDayLossLimit)}</b>
+            <small>
+              План {checkpoint.plannedLossPct}% от старта; остаток до общего breach перед днём{' '}
+              {formatMoney(checkpoint.remainingLossRoomBeforeDay)}.
+            </small>
+          </div>
+          <div>
+            <span>Рекомендуемый TP</span>
+            <b>{formatMoney(checkpoint.recommendedTpAmount)}</b>
+            <small>Перекрывает прошлые SL и доводит этап до цели.</small>
+          </div>
+          <div>
+            <span>Официальные пределы</span>
+            <b>День {checkpoint.dailyLossPct}% · общий {checkpoint.maxLossPct}%</b>
+            <small>
+              Потолок текущего дня {formatMoney(checkpoint.officialSelectedDayLossLimit)};
+              рабочая схема намеренно ниже.
+            </small>
+          </div>
+        </div>
+        {checkpoint.concentrationThreshold !== null ? (
+          <div className={`phase-guidance__policy ${
+            checkpoint.recommendedTpTriggersConcentration ? 'is-warning' : ''
+          }`}>
+            <strong>60% Profit Concentration</strong>
+            <span>
+              Порог одной trade idea {formatMoney(checkpoint.concentrationThreshold)}.
+              {checkpoint.recommendedTpTriggersConcentration
+                ? ` Рекомендуемый TP ${formatMoney(checkpoint.recommendedTpAmount)} выше порога:`
+                : ''}{' '}
+              проход сохраняется, но будущий Master потребует 4 прибыльных дня перед выплатой.
+            </span>
+          </div>
+        ) : (
+          <p className="phase-guidance__policy">
+            60% Profit Concentration не применяется к evaluation ниже $25K.
+          </p>
+        )}
+      </section>
 
       <PhaseHistory
         checkpoint={checkpoint}

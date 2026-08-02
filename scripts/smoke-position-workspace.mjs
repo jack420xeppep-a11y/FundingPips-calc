@@ -382,7 +382,7 @@ try {
     outcome.dispatchEvent(new Event('change', { bubbles: true }));
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-      .set.call(amount, '385');
+      .set.call(amount, '395');
     amount.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('.phase-checkpoint__record').click();
     return true;
@@ -397,7 +397,7 @@ try {
     outcome.dispatchEvent(new Event('change', { bubbles: true }));
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-      .set.call(amount, '480');
+      .set.call(amount, '385');
     amount.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('.phase-checkpoint__record').click();
     return true;
@@ -423,13 +423,13 @@ try {
   await evaluate(`(() => {
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-      .set.call(amount, '135');
+      .set.call(amount, '200');
     amount.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()`);
   await retry(async () => {
     const ready = await evaluate(`(() =>
-      document.querySelector('#phaseAmount').value === '135' &&
+      document.querySelector('#phaseAmount').value === '200' &&
       !document.querySelector('.phase-checkpoint__record').disabled
     )()`);
     if (!ready) throw new Error('Standard day 3 result was not entered');
@@ -440,7 +440,8 @@ try {
       checkpoint: document.querySelector('.phase-checkpoint')?.innerText,
       history: document.querySelector('.phase-history')?.innerText,
     }))()`);
-    const ready = state.checkpoint?.includes('Reset после breach') &&
+    const ready = state.checkpoint?.includes('Правила и подсказки') &&
+      state.checkpoint?.includes('4 / 4 / 2%') &&
       state.history?.includes('Чистыми от старта') &&
       state.history?.includes('+$59');
     if (!ready) throw new Error(`Standard $59 outcome is not ready: ${JSON.stringify(state)}`);
@@ -448,6 +449,31 @@ try {
   const standardCheckpoint = await evaluate(`(() => ({
     history: document.querySelector('.phase-history').innerText,
     checkpoint: document.querySelector('.phase-checkpoint').innerText,
+  }))()`);
+  await evaluate("document.querySelector('.prop-purchase-discount input[type=checkbox]').click()");
+  await retry(async () => {
+    const ready = await evaluate("Boolean(document.querySelector('#purchaseDiscountPct'))");
+    if (!ready) throw new Error('Purchase discount input did not open');
+  });
+  await evaluate(`(() => {
+    const discount = document.querySelector('#purchaseDiscountPct');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(discount, '15');
+    discount.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('.phase-history').innerText.includes('−$56.10') &&
+      document.querySelector('.phase-history').innerText.includes('+$68.90')
+    )()`);
+    if (!ready) throw new Error('Purchase discount was not included in economics');
+  });
+  const standardDiscount = await evaluate(`(() => ({
+    price: document.querySelector('#challengeCost').value,
+    discount: document.querySelector('#purchaseDiscountPct').value,
+    text: document.querySelector('.phase-checkpoint').innerText,
+    history: document.querySelector('.phase-history').innerText,
   }))()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
@@ -769,9 +795,16 @@ try {
     standardCheckpoint.history.includes('−$66') &&
     standardCheckpoint.history.includes('Чистыми от старта') &&
     standardCheckpoint.history.includes('+$59') &&
-    standardCheckpoint.checkpoint.includes('Reset после breach') &&
-    standardCheckpoint.checkpoint.includes('−15%') &&
-    standardCheckpoint.checkpoint.includes('$56.10') &&
+    standardCheckpoint.checkpoint.includes('Правила и подсказки') &&
+    standardCheckpoint.checkpoint.includes('4 / 4 / 2%') &&
+    standardCheckpoint.checkpoint.includes('SL дня до $200') &&
+    standardCheckpoint.checkpoint.includes('Рекомендуемый TP') &&
+    standardCheckpoint.checkpoint.includes('$1,580') &&
+    standardDiscount.price === '56.1' &&
+    standardDiscount.discount === '15' &&
+    standardDiscount.text.toLowerCase().includes('куплен со скидкой') &&
+    standardDiscount.history.includes('−$56.10') &&
+    standardDiscount.history.includes('+$68.90') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
@@ -828,6 +861,8 @@ try {
     legacyOriginal,
     balancedRestored,
     flexCheckpoint,
+    standardCheckpoint,
+    standardDiscount,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,

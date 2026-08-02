@@ -31,7 +31,11 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
 });
 
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
-const DAY_COUNT = 3;
+const MAX_DAY_COUNT = 4;
+const EVALUATION_LOSS_PLANS = Object.freeze({
+  standard: Object.freeze([4, 4, 2]),
+  flex: Object.freeze([3, 3, 3, 3]),
+});
 const STANDARD_SCHEME_10K = Object.freeze({
   p1: Object.freeze({
     sl: Object.freeze([50, 50, 25]),
@@ -69,28 +73,6 @@ export function getSchemeBybitPnl({
   const basePnl = path?.[outcome]?.[dayIndex];
   if (!Number.isFinite(basePnl)) return null;
   return round(basePnl * Math.max(0, Number(accountSize) || 0) / 10_000);
-}
-
-export function getResetOffer({
-  stage = 'p1',
-  status = 'tracking',
-  accountSize = 10_000,
-  purchasePrice = 0,
-} = {}) {
-  if (status !== 'breached') return null;
-  const size = Math.max(0, Number(accountSize) || 0);
-  const discountPct = stage === 'p1' ? 15 : stage === 'p2' ? 10 : stage === 'funded' ? 7 : 0;
-  if (!discountPct || (stage === 'funded' && size >= 100_000)) return null;
-  const price = round(Math.max(0, Number(purchasePrice) || 0));
-  return {
-    stage,
-    label: stage === 'p1' ? 'Phase 1' : stage === 'p2' ? 'Phase 2' : 'Master',
-    discountPct,
-    purchasePrice: price,
-    resetPrice: round(price * (1 - discountPct / 100)),
-    restartStage: 'p1',
-    expiresInDays: 7,
-  };
 }
 
 const normalizeDay = (entry) => {
@@ -145,6 +127,9 @@ export function getPropRules({
       ? rules.p2Target
       : Math.max(0, Number(fundedPayout) || 0);
   const evaluation = normalizedStage !== 'funded';
+  const lossPlanPct = evaluation
+    ? [...EVALUATION_LOSS_PLANS[model]]
+    : Array.from({ length: 3 }, () => rules.dailyLossLimit);
   const concentrationThreshold = evaluation && size >= 25_000
     ? round(size * targetPct * 0.006)
     : null;
@@ -176,26 +161,28 @@ export function getPropRules({
     requiredTradingDays: evaluation && model === 'standard' ? 3 : 0,
     requiredProfitableDays: model === 'flex' && split === 0.95 ? 3 : 0,
     profitableDayAmount: round(size * 0.005),
+    lossPlanPct,
+    dayCount: lossPlanPct.length,
   };
 }
 
 export function createEmptyPhaseLedger() {
   return Object.fromEntries(STAGES.map((stage) => [
     stage,
-    Array.from({ length: DAY_COUNT }, () => ({ ...EMPTY_DAY })),
+    Array.from({ length: MAX_DAY_COUNT }, () => ({ ...EMPTY_DAY })),
   ]));
 }
 
 export function updatePhaseLedger(ledger, stage, day, entry) {
   if (!STAGES.includes(stage)) return ledger;
   const dayIndex = Number(day) - 1;
-  if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex >= DAY_COUNT) return ledger;
+  if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex >= MAX_DAY_COUNT) return ledger;
 
   const next = {
     ...createEmptyPhaseLedger(),
     ...(ledger ?? {}),
   };
-  const stageDays = Array.from({ length: DAY_COUNT }, (_, index) => (
+  const stageDays = Array.from({ length: MAX_DAY_COUNT }, (_, index) => (
     normalizeDay(next[stage]?.[index])
   ));
   stageDays[dayIndex] = normalizeDay(entry);
@@ -213,6 +200,7 @@ export function calculatePhaseCheckpoint({
   bybitStake = 0,
   bybitLoss = 0,
   challengeCost = 0,
+  purchaseDiscountPct = 0,
 } = {}) {
   const rules = getPropRules({
     accountModel,
@@ -222,8 +210,8 @@ export function calculatePhaseCheckpoint({
     fundedPayout,
   });
   const size = Math.max(0, Number(accountSize) || 0);
-  const day = Math.min(DAY_COUNT, Math.max(1, Number(selectedDay) || 1));
-  const entries = Array.from({ length: DAY_COUNT }, (_, index) => (
+  const day = Math.min(rules.dayCount, Math.max(1, Number(selectedDay) || 1));
+  const entries = Array.from({ length: rules.dayCount }, (_, index) => (
     normalizeDay(ledger?.[rules.stage]?.[index])
   ));
   const signedPnl = (entry) => (
@@ -237,9 +225,17 @@ export function calculatePhaseCheckpoint({
   const realizedPnl = included.reduce((total, entry) => total + signedPnl(entry), 0);
   const selectedEntry = entries[day - 1];
   const dayOpeningBalance = size + previousPnl;
-  const selectedDayLossLimit = Math.max(0, dayOpeningBalance * rules.dailyLossPct / 100);
+  const officialSelectedDayLossLimit = Math.max(
+    0,
+    dayOpeningBalance * rules.dailyLossPct / 100,
+  );
+  const remainingLossRoomBeforeDay = Math.max(0, rules.maxLossAmount + previousPnl);
+  const plannedLossPct = rules.lossPlanPct[day - 1] ?? rules.dailyLossPct;
+  const plannedLossAmount = Math.max(0, size * plannedLossPct / 100);
+  const selectedDayLossLimit = Math.min(plannedLossAmount, remainingLossRoomBeforeDay);
+  const recommendedTpAmount = Math.max(0, rules.targetAmount - previousPnl);
   const dailyBreach = selectedEntry.outcome === 'sl' &&
-    selectedEntry.amount >= selectedDayLossLimit;
+    selectedEntry.amount >= officialSelectedDayLossLimit;
   const maxLossBreach = realizedPnl <= -rules.maxLossAmount;
   const tradingDays = included.filter((entry) => entry.outcome !== 'none' && entry.amount > 0).length;
   const profitableDays = included.filter((entry) => (
@@ -251,6 +247,8 @@ export function calculatePhaseCheckpoint({
   const concentrationTriggered = rules.concentrationThreshold !== null && included.some((entry) => (
     entry.outcome === 'tp' && entry.amount > rules.concentrationThreshold
   ));
+  const recommendedTpTriggersConcentration = rules.concentrationThreshold !== null &&
+    recommendedTpAmount > rules.concentrationThreshold;
   const mirroredStake = Math.max(0, Number(bybitStake) || 0);
   const mirroredLoss = Math.max(0, Number(bybitLoss) || mirroredStake);
   const buildMirroredDay = (entry, index, mirroredStage = rules.stage) => {
@@ -285,26 +283,31 @@ export function calculatePhaseCheckpoint({
   });
   const accountedStages = STAGES.slice(0, STAGES.indexOf(rules.stage) + 1);
   const bybitPnl = accountedStages.reduce((total, accountedStage) => {
-    const stageEntries = Array.from({ length: DAY_COUNT }, (_, index) => (
+    const accountedRules = getPropRules({
+      accountModel: rules.accountModel,
+      accountSize: size,
+      stage: accountedStage,
+      profitSplit,
+      fundedPayout,
+    });
+    const stageEntries = Array.from({ length: accountedRules.dayCount }, (_, index) => (
       normalizeDay(ledger?.[accountedStage]?.[index])
     ));
     return total + stageEntries.reduce((stageTotal, entry, index) => (
       stageTotal + (buildMirroredDay(entry, index, accountedStage)?.bybitPnl ?? 0)
     ), 0);
   }, 0);
-  const propCost = round(Math.max(0, Number(challengeCost) || 0));
+  const propBaseCost = round(Math.max(0, Number(challengeCost) || 0));
+  const normalizedPurchaseDiscountPct = round(Math.min(
+    100,
+    Math.max(0, Number(purchaseDiscountPct) || 0),
+  ));
+  const propCost = round(propBaseCost * (1 - normalizedPurchaseDiscountPct / 100));
 
   let status = 'tracking';
   if (dailyBreach || maxLossBreach) status = 'breached';
   else if (targetReached && dayRequirementMet) status = 'passed';
   else if (targetReached) status = 'target_reached_days_pending';
-  const resetOffer = getResetOffer({
-    stage: rules.stage,
-    status,
-    accountSize: size,
-    purchasePrice: propCost,
-  });
-
   return {
     ...rules,
     selectedDay: day,
@@ -312,6 +315,12 @@ export function calculatePhaseCheckpoint({
     selectedEntry,
     dayOpeningBalance: round(dayOpeningBalance),
     selectedDayLossLimit: round(selectedDayLossLimit),
+    officialSelectedDayLossLimit: round(officialSelectedDayLossLimit),
+    remainingLossRoomBeforeDay: round(remainingLossRoomBeforeDay),
+    plannedLossPct,
+    plannedLossAmount: round(plannedLossAmount),
+    recommendedTpAmount: round(recommendedTpAmount),
+    recommendedTpTriggersConcentration,
     realizedPnl: round(realizedPnl),
     currentBalance: round(size + realizedPnl),
     remainingToTarget: round(Math.max(0, rules.targetAmount - realizedPnl)),
@@ -325,9 +334,10 @@ export function calculatePhaseCheckpoint({
     concentrationTriggered,
     recordedDays,
     bybitPnl: round(bybitPnl),
+    propBaseCost,
+    purchaseDiscountPct: normalizedPurchaseDiscountPct,
     propCost,
     netCashResult: round(bybitPnl - propCost),
-    resetOffer,
     status,
   };
 }

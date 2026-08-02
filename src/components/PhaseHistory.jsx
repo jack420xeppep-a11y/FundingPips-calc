@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-import { formatSignedMoney } from '../format.js';
+import { formatSignedMoney, formatSignedMoneyFixed } from '../format.js';
 
 export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
   const recordedByDay = useMemo(() => new Map(
@@ -21,17 +21,20 @@ export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
             </b>
           </span>
           <span>
-            Цена пропа <b className="negative">{formatSignedMoney(-checkpoint.propCost)}</b>
+            Цена пропа{checkpoint.purchaseDiscountPct > 0
+              ? ` (−${checkpoint.purchaseDiscountPct}%)`
+              : ''}{' '}
+            <b className="negative">{formatSignedMoneyFixed(-checkpoint.propCost)}</b>
           </span>
           <span>
             Чистыми от старта <b className={checkpoint.netCashResult >= 0 ? 'positive' : 'negative'}>
-              {formatSignedMoney(checkpoint.netCashResult)}
+              {formatSignedMoneyFixed(checkpoint.netCashResult)}
             </b>
           </span>
         </div>
       </header>
-      <div className="phase-history__list" role="list">
-        {[1, 2, 3].map((day) => {
+      <div className={`phase-history__list ${checkpoint.dayCount === 4 ? 'has-four-days' : ''}`} role="list">
+        {Array.from({ length: checkpoint.dayCount }, (_, index) => index + 1).map((day) => {
           const record = recordedByDay.get(day);
           return (
             <div key={day} role="listitem">
