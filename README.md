@@ -1,113 +1,150 @@
-# FundingPips Calc
+<p align="center">
+  <img src="./assets/readme/hero.gif" width="100%" alt="CalcPro — синхронизированный расчёт позиции FundingPips и Bybit">
+</p>
 
-React-интерфейс и независимый расчётный движок для синхронизированной позиции FundingPips / Bybit.
+<p align="center">
+  <a href="https://farmcalc.duckdns.org/"><strong>Открыть калькулятор</strong></a>
+  ·
+  <a href="https://github.com/jack420xeppep-a11y/FundingPips-calc/actions/workflows/deploy.yml">CI/CD</a>
+  ·
+  <a href="./DESIGN.md">Design system</a>
+  ·
+  <a href="./assets/readme/hero.svg">Статический hero</a>
+</p>
 
-Production: [farmcalc.duckdns.org](https://farmcalc.duckdns.org)
+CalcPro — локальный расчётный движок и React-интерфейс для противоположных ног **FundingPips / Bybit**. Он рассчитывает объёмы, TP/SL и экономику полного цикла, сохраняет результаты дней внутри фазы и показывает рабочий маршрут просадки отдельно от официального предела.
 
-## Возможности
+> Это инструмент расчёта и наблюдения. Он не отправляет ордера и не скрывает комиссию или спред: fee-free и fee-aware режимы обозначены явно.
 
-- синхронный расчёт противоположных ног FundingPips / Bybit с явными лотами, TP и SL;
-- опциональная live-синхронизация `EURUSD+`, `GBPUSD+` и `XAUUSD+` через серверный CalcPro Quote Relay;
-- золотой `HL Intelligence OFF/AUTO`: агрегирует `xyz:GOLD`, Bybit `XAUUSD+`,
-  рыночный режим и проверенные когорты направленных трейдеров, затем показывает
-  вероятности `BB TP / FP SL`, `BB SL / FP TP` и отсутствия касания;
-- динамический порог безубытка, текущая Funded-цель и запас до порога;
-- пять целей оптимизатора: минимальная нагрузка, быстрый безубыток, максимум при сливе FP, минимальный Funded TP и баланс;
-- сравнение и применение профилей `Сбалансированная`, `Bybit-first`,
-  `Funded-first` и `Legacy Original` с исходными ставками/payout из
-  `calculator.html`;
-- сценарии полного цикла и отдельная лестница восстановления;
-- мобильный Quick Mode с пятью входами, активным профилем, двумя ногами сделки,
-  sticky readiness/copy-панелью и раскрываемой после исполнения аналитикой;
-- светлая и облегчённая графитовая темы, PWA-иконка и адаптация от 320 px.
+## Интерфейс — это доказательство
 
-Экономика считается без комиссий и спреда, поэтому live-режим использует
-середину Bid/Ask. Quote Relay один раз читает публичный поток Bybit.
-Отдельный HyperGold-процесс читает только `xyz:GOLD`, хранит ограниченную
-приватную SQLite-базу и отдаёт React только агрегированные вероятности через
-same-origin SSE. Адреса кошельков и индивидуальные позиции не попадают в
-публичный API. Сделки не исполняются.
+<p align="center">
+  <a href="https://farmcalc.duckdns.org/">
+    <img src="./assets/readme/interface.png" width="100%" alt="Рабочий интерфейс CalcPro с журналом фазы, скидкой покупки и маршрутом риска">
+  </a>
+</p>
 
-## Запуск
+<p align="center"><sub>Реальный UI из headless browser-smoke; market values на снимке поданы локальными mock-сервисами.</sub></p>
 
-```bash
-npm install
-npm run relay        # терминал 1: Bybit → локальный SSE API, :8787
-INTELLIGENCE_DB_PATH=/tmp/calcpro-intelligence.sqlite \
-  npm run intelligence # терминал 2: HyperGold API, :8788
-npm run dev          # терминал 3: React с proxy на оба API
+В одном рабочем пространстве доступны:
+
+- противоположные ноги Bybit и FundingPips с явными лотами, TP, SL и назначением каждой позиции;
+- журнал Phase 1 / Phase 2 / Funded с сохранением фактического P&L каждого дня;
+- рабочие маршруты **Standard `4 / 4 / 2%`** и **Flex `3 / 3 / 3 / 3%`**, не подменяющие официальные ограничения;
+- рекомендуемый TP, учитывающий прошлые результаты фазы;
+- ручная цена пропа и скидка фактической покупки, включённые в чистую экономику;
+- live-котировки `EURUSD+`, `GBPUSD+`, `XAUUSD+` и агрегированный `HL Intelligence` для золота;
+- Quick Mode на мобильном, блокировка рассчитанного setup и копируемый тикет обеих ног.
+
+## Как устроен CalcPro
+
+<p align="center">
+  <img src="./assets/readme/architecture.svg" width="100%" alt="Поток данных CalcPro от параметров сделки и market feeds к локальному расчёту, журналу фазы и агрегированному прогнозу">
+</p>
+
+Расчёт позиции остаётся чистой локальной функцией и не зависит от доступности market feeds. Quote Relay один раз принимает публичный Bybit TradFi WebSocket и раздаёт валидированный same-origin SSE. HyperGold наблюдает только `xyz:GOLD`, хранит ограниченную приватную SQLite/WAL-базу и публикует в браузер только агрегированные состояния.
+
+```text
+параметры сделки ──→ domain calculator ──→ Bybit leg + FundingPips leg
+Bybit TradFi ──────→ Quote Relay ─────────→ свежая MID-котировка
+Hyperliquid GOLD ──→ HyperGold ───────────→ DOWN / UP / NEITHER
+результат дня ─────→ phase ledger ─────────→ следующий SL / рекомендуемый TP
 ```
 
-Vite выведет локальный адрес приложения. Для production-сборки:
+Адреса наблюдаемых кошельков и индивидуальные позиции не входят в публичный API. Если релей или intelligence недоступны, ручной калькулятор продолжает работать.
+
+## Дисциплина фазы
+
+CalcPro разделяет **правило проп-компании** и **рабочую схему с буфером**:
+
+| Модель | Цели | Официально | Рабочий маршрут |
+|---|---:|---:|---:|
+| 2 Step Standard | Phase 1 `8%`, Phase 2 `5%` | день `5%`, общий `10%`, минимум 3 торговых дня | `4 / 4 / 2%` |
+| 2 Step Flex | Phase 1 `10%`, Phase 2 `6%` | день `4%`, общий `12%` | `3 / 3 / 3 / 3%` |
+
+Дневной официальный предел считается от большей из opening balance и opening equity; плавающий убыток также учитывается. Журнал CalcPro хранит введённый закрытый P&L, поэтому перед реальной постановкой SL требуется оставить место под spread, commission и floating equity.
+
+Для новых evaluation-счетов от `$25K` интерфейс отдельно показывает порог **60% Profit Concentration**. Его превышение не проваливает evaluation, но меняет условия будущей выплаты Master Account.
+
+## Быстрый старт
+
+Требования: Node.js 22+, npm и современный браузер. Для полного browser-smoke нужен Google Chrome.
 
 ```bash
-npm run build
-npm run preview
+git clone git@github.com:jack420xeppep-a11y/FundingPips-calc.git
+cd FundingPips-calc
+npm ci
 ```
+
+Запустите три процесса:
+
+```bash
+npm run relay
+```
+
+```bash
+INTELLIGENCE_DB_PATH=/tmp/calcpro-intelligence.sqlite npm run intelligence
+```
+
+```bash
+npm run dev
+```
+
+Vite покажет локальный адрес. Без relay и intelligence калькулятор остаётся доступен в ручном режиме.
 
 ## Проверка
 
 ```bash
 npm test
-npm run test:browser # при запущенном npm run dev и установленном Chrome
+npm run check:ops
+npm run build
 ```
 
-Тесты проверяют расчёт лотов и TP/SL, динамический безубыток, пресеты и
-оптимизатор, сценарии цикла, лестницу восстановления, копируемый тикет,
-контракты обоих live-сервисов, реконструкцию эпизодов, жизненный цикл кошельков,
-когорты, outcomes/calibration, AUTO-стабилизацию и React-интерфейс.
-Browser-smoke дополнительно проходит Quick Mode, drawer, применение стратегии,
-копирование, intelligence lock/unlock и live-переключения инструментов.
+Полный браузерный сценарий запускается при работающих Vite и mock-сервисах:
 
-## Структура
+```bash
+node scripts/mock-calm-services.mjs
+npm run test:browser -- http://127.0.0.1:5173/
+```
 
-- `src/domain/calculator.js` — чистые вычисления без React и DOM.
-- `src/domain/strategies.js` — безубыток, готовые профили и цели оптимизатора.
-- `src/domain/tradeTicket.js` — текст двух ног для безопасного копирования сделки.
-- `server/quote-relay.js` — Bybit WebSocket, gzip, allowlist, quote store, staleness и SSE API.
-- `server/index.js` — production-процесс релея на loopback-интерфейсе.
-- `intelligence/market-collector.js` — ограниченный публичный поток
-  Hyperliquid `xyz:GOLD` и рыночные признаки.
-- `intelligence/database.js` — независимая приватная SQLite/WAL-база,
-  retention и агрегированные health-метрики.
-- `intelligence/candidate-observer.js`, `episodes.js`, `cohorts.js` —
-  наблюдение, реконструкция и ротация направленных gold-когорт.
-- `intelligence/market-model.js`, `probability-engine.js` — market/wallet
-  вероятности, Bybit outcomes, maturity и phase-aware рекомендация.
-- `intelligence/api-server.js`, `runtime.js`, `index.js` — loopback API,
-  same-origin SSE и production orchestration.
-- `src/services/quoteRelay.js` — валидируемый same-origin EventSource-клиент.
-- `src/hooks/useLivePrice.js` — связь SSE-релея с выбранным React-инструментом.
-- `src/components/` — поля, результаты двух платформ, настройки, сценарии и recovery view.
-- `src/App.jsx` — состояние приложения, переключение разделов и синхронизация параметров.
-- `src/styles.css` — Linear Precision Fintech, светлая и облегчённая графитовая темы, mobile layout.
-- `scripts/smoke-position-workspace.mjs` — реальный smoke-тест интерфейса через headless Chrome.
-- `DESIGN.md` — дизайн-система и QA-критерии.
+Тесты покрывают sizing и TP/SL, экономику цикла, fee-aware расчёты, дневной ledger, Standard/Flex rules, optimizer, recovery ladder, контракты SSE, реконструкцию gold-эпизодов, lifecycle когорт, AUTO-стабилизацию, мобильный Quick Mode и production operations.
 
-## CI/CD
+## Карта репозитория
 
-Каждый pull request и push в `main` проходит тесты, operations-контракты, аудит
-зависимостей и production-сборку в GitHub Actions. Успешный push в `main`
-автоматически публикует frontend, quote relay и HyperGold service ограниченным
-SSH-ключом без общего root-доступа.
+| Область | Назначение |
+|---|---|
+| `src/domain/` | Чистые расчёты позиции, стратегии, phase ledger и trade ticket |
+| `src/components/` | Execution workspace, журнал фазы, intelligence и recovery UI |
+| `server/` | Bybit TradFi quote relay, allowlist, freshness и SSE |
+| `intelligence/` | `xyz:GOLD`, агрегаты, SQLite/WAL, cohorts и probability engine |
+| `ops/` | Ограниченный deployment, systemd, Caddy и production contracts |
+| `scripts/` | Headless Chrome smoke и локальные mock-сервисы |
+| `docs/hypergold/` | Источники, ограничения и roadmap intelligence-слоя |
+| `DESIGN.md` | Linear Precision Fintech tokens, responsive и accessibility правила |
 
-- Workflow: `.github/workflows/deploy.yml`.
-- Серверный forced-command: `ops/fundingpips-calc-deploy`.
-- Caddy-конфигурация домена: `ops/farmcalc.caddy`; `/api/quotes` и
-  `/api/intelligence/*` проксируются на разные loopback-сервисы, CSP оставляет
-  браузеру только `self`.
-- Systemd-сервисы: `ops/calcpro-quote-relay.service` и
-  `ops/calcpro-gold-intelligence.service`.
-- Данные HyperGold живут в `/var/lib/calcpro-intelligence`, вне release-каталога;
-  deploy их не удаляет.
-- Перед каждым intelligence deploy restricted preflight проверяет минимум 1 GiB
-  свободного места и `PRAGMA quick_check`, затем создаёт SQLite `.backup` с
-  правами `0600`; старые predeploy-копии хранятся 30 дней.
-- Deploy key может обновлять только три CalcPro-каталога и перезапускать два
-  CalcPro-сервиса.
-- Aggregate health публикует только безопасные счётчики raw/sentiment/decision
-  cadence, распределение устойчивых состояний, cooldown/emergency counts,
-  maturity, freshness и decision lag — без адресов и индивидуальных позиций.
-- Rollback HyperGold v1: tag `prehypergold` указывает на последнюю production
-  версию до intelligence-слоя. Обычный rollback выполняется revert-коммитом и
-  push в `main`, чтобы CI/CD сохранил проверяемую историю.
+## Production и CI/CD
+
+Каждый pull request и push в `main` проходит unit/integration tests, operations contracts, dependency audit и Vite build. Успешный push публикует frontend и два loopback-сервиса ограниченным deploy-ключом.
+
+- Production: [farmcalc.duckdns.org](https://farmcalc.duckdns.org/)
+- Workflow: [Quality and deploy](https://github.com/jack420xeppep-a11y/FundingPips-calc/actions/workflows/deploy.yml)
+- Caddy: [`ops/farmcalc.caddy`](./ops/farmcalc.caddy)
+- Restricted deploy: [`ops/fundingpips-calc-deploy`](./ops/fundingpips-calc-deploy)
+- Services: [`calcpro-quote-relay.service`](./ops/calcpro-quote-relay.service) и [`calcpro-gold-intelligence.service`](./ops/calcpro-gold-intelligence.service)
+
+Обычный rollback выполняется revert-коммитом в `main`, чтобы история оставалась проверяемой. Данные intelligence находятся вне release-каталога и не удаляются frontend-деплоем.
+
+## Официальные референсы
+
+- FundingPips: [2 Step Standard](https://help.fundingpips.com/hc/en-us/articles/34501809112081-2-Step-Standard)
+- FundingPips: [2 Step Flex](https://help.fundingpips.com/hc/en-us/articles/47835196271249-2-Step-Flex)
+- FundingPips: [Risk Per Trade Idea и Profit Concentration](https://help.fundingpips.com/hc/en-us/articles/48174287980177-Risk-Per-Trade-Idea)
+- Hyperliquid: [WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+- Источники HyperGold, используемые при реализации: [`docs/hypergold/SOURCES.md`](./docs/hypergold/SOURCES.md)
+
+## Границы
+
+- CalcPro не связан с FundingPips, Bybit или Hyperliquid и не является их официальным продуктом.
+- Приложение не исполняет сделки и не гарантирует прохождение evaluation или прибыль.
+- Правила проп-компании могут меняться; перед торговлей сверяйте ограничения в личном кабинете и официальной документации.
+- Live MID не включает spread. Фактические commissions, slippage и floating equity должны учитываться отдельно.

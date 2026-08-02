@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">CalcPro — движок синхронизированной позиции FundingPips и Bybit</title>
+  <desc id="desc">Технический hero с двумя противоположными торговыми ногами, дневным маршрутом риска и локальным расчётом.</desc>
+  <defs>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0H0V42" fill="none" stroke="#46515e" stroke-width="1" opacity="0.38"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="420" rx="24" fill="#252b33"/>
+  <rect width="1200" height="420" rx="24" fill="url(#grid)"/>
+  <path d="M620 44V376" stroke="#46515e"/>
+
+  <g id="title-block" transform="translate(54 50)">
+    <g transform="translate(0 0)">
+      <rect width="54" height="54" rx="8" fill="#246bfd"/>
+      <text x="27" y="34" text-anchor="middle" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="800">CP</text>
+      <text x="72" y="19" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="2">PROP / HEDGE ENGINE</text>
+      <text x="72" y="45" fill="#5be0b3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700">LOCAL CALCULATION / READY</text>
+    </g>
+
+    <text x="0" y="142" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="64" font-weight="850" letter-spacing="-2">CALCPRO</text>
+    <text x="0" y="186" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="25" font-weight="650">Две площадки. Одна позиция.</text>
+    <text x="0" y="222" fill="#b1bac5" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22">Размер ног, TP / SL, дневной журнал</text>
+    <text x="0" y="252" fill="#b1bac5" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22">и маршрут просадки — в одном экране.</text>
+
+    <g transform="translate(0 302)">
+      <rect width="246" height="48" rx="6" fill="#2d343e" stroke="#627080"/>
+      <circle cx="24" cy="24" r="6" fill="#5be0b3"/>
+      <text x="42" y="30" fill="#f3f6f8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">farmcalc.duckdns.org</text>
+    </g>
+  </g>
+
+  <g id="engine-proof" transform="translate(658 48)">
+    <rect width="488" height="324" rx="14" fill="#2d343e" stroke="#627080"/>
+    <text x="24" y="34" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="1.5">SYNCHRONIZED POSITION / XAUUSD</text>
+    <path d="M24 52H464" stroke="#46515e"/>
+
+    <g id="bybit-leg" transform="translate(24 76)">
+      <rect width="208" height="116" rx="8" fill="#2d3d63" stroke="#82a7ff"/>
+      <rect width="208" height="5" rx="2.5" fill="#82a7ff"/>
+      <text x="18" y="35" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700">BYBIT / HEDGE</text>
+      <text x="18" y="71" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="26" font-weight="800">SHORT</text>
+      <text x="190" y="92" text-anchor="end" fill="#82a7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" font-weight="800">0.04</text>
+    </g>
+
+    <g id="fp-leg" transform="translate(256 76)">
+      <rect width="208" height="116" rx="8" fill="#4a3c29" stroke="#f4c66b"/>
+      <rect width="208" height="5" rx="2.5" fill="#f4c66b"/>
+      <text x="18" y="35" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700">FUNDINGPIPS</text>
+      <text x="18" y="71" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="26" font-weight="800">LONG</text>
+      <text x="190" y="92" text-anchor="end" fill="#f4c66b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" font-weight="800">0.32</text>
+    </g>
+
+    <g id="route-progress">
+      <path d="M128 210V228H360V210" fill="none" stroke="#82a7ff" stroke-width="3"/>
+      <circle cx="244" cy="228" r="6" fill="#82a7ff"/>
+    </g>
+
+    <g id="net-result" transform="translate(24 246)">
+      <rect width="440" height="54" rx="7" fill="#353e49" stroke="#46515e"/>
+      <text x="18" y="34" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700">ROUTE</text>
+      <text x="110" y="34" fill="#f3f6f8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="800">4 / 4 / 2%</text>
+      <text x="422" y="34" text-anchor="end" fill="#5be0b3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="800">BUFFER READY</text>
+    </g>
+  </g>
+</svg>

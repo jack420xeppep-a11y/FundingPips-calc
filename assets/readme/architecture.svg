@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">Архитектура CalcPro</title>
+  <desc id="desc">Система объединяет локальный расчёт позиции, серверный поток котировок Bybit и агрегированную аналитику Hyperliquid без исполнения сделок.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#627080"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="520" rx="24" fill="#252b33"/>
+  <text x="54" y="62" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="40" font-weight="800">Как движутся данные</text>
+  <text x="1146" y="58" text-anchor="end" fill="#5be0b3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">READ-ONLY MARKET DATA / LOCAL ECONOMICS</text>
+  <path d="M54 86H1146" stroke="#46515e"/>
+
+  <g transform="translate(54 122)">
+    <text x="0" y="0" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">01 / INPUTS</text>
+    <rect y="22" width="250" height="92" rx="8" fill="#2d343e" stroke="#627080"/>
+    <text x="20" y="57" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Параметры сделки</text>
+    <text x="20" y="87" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">цена · SL · этап · счёт</text>
+
+    <rect y="136" width="250" height="92" rx="8" fill="#2d3d63" stroke="#82a7ff"/>
+    <text x="20" y="171" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Bybit TradFi</text>
+    <text x="20" y="201" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">EURUSD+ · GBPUSD+ · XAUUSD+</text>
+
+    <rect y="250" width="250" height="92" rx="8" fill="#353e49" stroke="#5be0b3"/>
+    <text x="20" y="285" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Hyperliquid</text>
+    <text x="20" y="315" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">xyz:GOLD · market context</text>
+  </g>
+
+  <path d="M322 190H416" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M322 304H416" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M322 418H416" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(430 122)">
+    <text x="0" y="0" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">02 / ENGINES</text>
+    <rect y="22" width="330" height="92" rx="8" fill="#2d343e" stroke="#246bfd"/>
+    <text x="20" y="57" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Domain calculator</text>
+    <text x="20" y="87" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">лоты · TP/SL · экономика</text>
+
+    <rect y="136" width="330" height="92" rx="8" fill="#2d343e" stroke="#82a7ff"/>
+    <text x="20" y="171" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Quote Relay</text>
+    <text x="20" y="201" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">allowlist · freshness · SSE</text>
+
+    <rect y="250" width="330" height="92" rx="8" fill="#2d343e" stroke="#5be0b3"/>
+    <text x="20" y="285" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">HyperGold Intelligence</text>
+    <text x="20" y="315" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">aggregate only · bounded SQLite</text>
+  </g>
+
+  <path d="M778 190H872" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M778 304H872" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M778 418H872" stroke="#627080" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(886 122)">
+    <text x="0" y="0" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">03 / OUTPUTS</text>
+    <rect y="22" width="260" height="92" rx="8" fill="#2d3d63" stroke="#82a7ff"/>
+    <text x="20" y="57" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Две ноги</text>
+    <text x="20" y="87" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">Bybit ↔ FundingPips</text>
+
+    <rect y="136" width="260" height="92" rx="8" fill="#4a3c29" stroke="#f4c66b"/>
+    <text x="20" y="171" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">Журнал фазы</text>
+    <text x="20" y="201" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">4/4/2 · 3/3/3/3</text>
+
+    <rect y="250" width="260" height="92" rx="8" fill="#353e49" stroke="#5be0b3"/>
+    <text x="20" y="285" fill="#f3f6f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">DOWN / UP / NEITHER</text>
+    <text x="20" y="315" fill="#b1bac5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">решение без исполнения</text>
+  </g>
+</svg>
