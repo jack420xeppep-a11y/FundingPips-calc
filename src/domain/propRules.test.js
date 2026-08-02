@@ -6,6 +6,7 @@ import {
   createEmptyPhaseLedger,
   getPropModelPreset,
   getPropRules,
+  getResetOffer,
   updatePhaseLedger,
 } from './propRules.js';
 
@@ -150,16 +151,16 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
   assert.equal(checkpoint.bybitPnl, -63);
 });
 
-test('actual daily Bybit totals produce the illustrated $59 net result after prop cost', () => {
+test('Standard scheme calculates illustrated Bybit outcomes without manual daily input', () => {
   let ledger = createEmptyPhaseLedger();
   ledger = updatePhaseLedger(ledger, 'p1', 1, {
-    outcome: 'sl', amount: 385, bybitStake: 25, bybitAmount: 50,
+    outcome: 'sl', amount: 385, bybitStake: 25, bybitAmount: 999,
   });
   ledger = updatePhaseLedger(ledger, 'p1', 2, {
-    outcome: 'sl', amount: 480, bybitStake: 25, bybitAmount: 50,
+    outcome: 'sl', amount: 480, bybitStake: 25,
   });
   ledger = updatePhaseLedger(ledger, 'p1', 3, {
-    outcome: 'sl', amount: 135, bybitStake: 25, bybitAmount: 25,
+    outcome: 'sl', amount: 135, bybitStake: 25,
   });
 
   const checkpoint = calculatePhaseCheckpoint({
@@ -176,26 +177,76 @@ test('actual daily Bybit totals produce the illustrated $59 net result after pro
   assert.equal(checkpoint.realizedPnl, -1_000);
   assert.equal(checkpoint.maxLossBreach, true);
   assert.equal(checkpoint.bybitPnl, 125);
+  assert.deepEqual(
+    checkpoint.recordedDays.map(({ day, bybitPnl }) => ({ day, bybitPnl })),
+    [
+      { day: 1, bybitPnl: 50 },
+      { day: 2, bybitPnl: 50 },
+      { day: 3, bybitPnl: 25 },
+    ],
+  );
   assert.equal(checkpoint.propCost, 66);
   assert.equal(checkpoint.netCashResult, 59);
 
-  ledger = updatePhaseLedger(ledger, 'p2', 1, {
-    outcome: 'tp', amount: 500, bybitStake: 45, bybitLoss: 90,
+  let phaseTwoLedger = createEmptyPhaseLedger();
+  phaseTwoLedger = updatePhaseLedger(phaseTwoLedger, 'p1', 1, {
+    outcome: 'tp', amount: 800,
+  });
+  phaseTwoLedger = updatePhaseLedger(phaseTwoLedger, 'p2', 1, {
+    outcome: 'sl', amount: 400,
+  });
+  phaseTwoLedger = updatePhaseLedger(phaseTwoLedger, 'p2', 2, {
+    outcome: 'sl', amount: 400,
+  });
+  phaseTwoLedger = updatePhaseLedger(phaseTwoLedger, 'p2', 3, {
+    outcome: 'sl', amount: 200,
   });
   const phaseTwo = calculatePhaseCheckpoint({
     accountModel: 'standard',
     accountSize: 10_000,
     stage: 'p2',
-    selectedDay: 1,
-    ledger,
+    selectedDay: 3,
+    ledger: phaseTwoLedger,
     profitSplit: 0.8,
     bybitStake: 45,
     bybitLoss: 90,
     challengeCost: 66,
   });
 
-  assert.equal(phaseTwo.bybitPnl, 35);
-  assert.equal(phaseTwo.netCashResult, -31);
+  assert.deepEqual(
+    phaseTwo.recordedDays.map(({ day, bybitPnl }) => ({ day, bybitPnl })),
+    [
+      { day: 1, bybitPnl: 100 },
+      { day: 2, bybitPnl: 100 },
+      { day: 3, bybitPnl: 50 },
+    ],
+  );
+  assert.equal(phaseTwo.bybitPnl, 150);
+  assert.equal(phaseTwo.netCashResult, 84);
+});
+
+test('reset discount is offered only after breach and does not replace original prop cost', () => {
+  assert.equal(getResetOffer({ stage: 'p1', status: 'tracking', purchasePrice: 66 }), null);
+  assert.deepEqual(getResetOffer({
+    stage: 'p1',
+    status: 'breached',
+    accountSize: 10_000,
+    purchasePrice: 66,
+  }), {
+    stage: 'p1',
+    label: 'Phase 1',
+    discountPct: 15,
+    purchasePrice: 66,
+    resetPrice: 56.1,
+    restartStage: 'p1',
+    expiresInDays: 7,
+  });
+  assert.equal(getResetOffer({
+    stage: 'funded',
+    status: 'breached',
+    accountSize: 100_000,
+    purchasePrice: 529,
+  }), null);
 });
 
 test('checkpoint identifies a hard loss breach and a separate 60% concentration warning', () => {

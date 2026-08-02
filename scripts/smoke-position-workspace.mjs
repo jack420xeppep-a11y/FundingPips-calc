@@ -299,11 +299,6 @@ try {
     changeSelect('#accountModel', 'flex');
     changeSelect('#accountPreset', '25k');
     changeSelect('#phaseOutcome', 'sl');
-    document.querySelector('.prop-discount-toggle input').click();
-    const propCost = document.querySelector('#challengeCost');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-      .set.call(propCost, '70');
-    propCost.dispatchEvent(new Event('input', { bubbles: true }));
     const amount = document.querySelector('#phaseAmount');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
       .set.call(amount, '1000');
@@ -358,6 +353,101 @@ try {
     persisted: JSON.parse(
       localStorage.getItem('calcpro-phase-ledgers-v1') ?? '{}'
     )['flex:25k']?.p1,
+  }))()`);
+
+  // Проверяем точную пользовательскую схему Standard 10K:
+  // три SL FundingPips должны автоматически дать Bybit +50, +50, +25.
+  await evaluate(`(() => {
+    const changeSelect = (selector, value) => {
+      const field = document.querySelector(selector);
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    changeSelect('#accountModel', 'standard');
+    changeSelect('#accountPreset', '10k');
+    changeSelect('#phaseDay', '1');
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#accountModel').value === 'standard' &&
+      document.querySelector('#accountPreset').value === '10k' &&
+      document.querySelector('#phaseDay').value === '1'
+    )()`);
+    if (!ready) throw new Error('Standard 10K checkpoint was not selected');
+  });
+  await evaluate(`(() => {
+    const outcome = document.querySelector('#phaseOutcome');
+    outcome.value = 'sl';
+    outcome.dispatchEvent(new Event('change', { bubbles: true }));
+    const amount = document.querySelector('#phaseAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '385');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.phase-checkpoint__record').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate("document.querySelector('#phaseDay').value === '2'");
+    if (!ready) throw new Error('Standard day 1 was not recorded');
+  });
+  await evaluate(`(() => {
+    const outcome = document.querySelector('#phaseOutcome');
+    outcome.value = 'sl';
+    outcome.dispatchEvent(new Event('change', { bubbles: true }));
+    const amount = document.querySelector('#phaseAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '480');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.phase-checkpoint__record').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#phaseDay').value === '3' &&
+      document.querySelector('#phaseOutcome').value === 'none' &&
+      document.querySelector('#phaseAmount').value === '0'
+    )()`);
+    if (!ready) throw new Error('Standard day 2 was not recorded');
+  });
+  await evaluate(`(() => {
+    const outcome = document.querySelector('#phaseOutcome');
+    outcome.value = 'sl';
+    outcome.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate("document.querySelector('#phaseOutcome').value === 'sl'");
+    if (!ready) throw new Error('Standard day 3 outcome was not selected');
+  });
+  await evaluate(`(() => {
+    const amount = document.querySelector('#phaseAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '135');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#phaseAmount').value === '135' &&
+      !document.querySelector('.phase-checkpoint__record').disabled
+    )()`);
+    if (!ready) throw new Error('Standard day 3 result was not entered');
+  });
+  await evaluate("document.querySelector('.phase-checkpoint__record').click()");
+  await retry(async () => {
+    const state = await evaluate(`(() => ({
+      checkpoint: document.querySelector('.phase-checkpoint')?.innerText,
+      history: document.querySelector('.phase-history')?.innerText,
+    }))()`);
+    const ready = state.checkpoint?.includes('Reset после breach') &&
+      state.history?.includes('Чистыми от старта') &&
+      state.history?.includes('+$59');
+    if (!ready) throw new Error(`Standard $59 outcome is not ready: ${JSON.stringify(state)}`);
+  });
+  const standardCheckpoint = await evaluate(`(() => ({
+    history: document.querySelector('.phase-history').innerText,
+    checkpoint: document.querySelector('.phase-checkpoint').innerText,
   }))()`);
 
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
@@ -648,7 +738,7 @@ try {
     flexCheckpoint.target === '10' &&
     flexCheckpoint.dailyLoss === '4' &&
     flexCheckpoint.maxDrawdown === '12' &&
-    flexCheckpoint.propCost === '70' &&
+    flexCheckpoint.propCost === '156' &&
     flexCheckpoint.day === '3' &&
     flexCheckpoint.outcome === 'none' &&
     flexCheckpoint.amount === '0' &&
@@ -661,16 +751,27 @@ try {
     flexCheckpoint.history.includes('−$126') &&
     flexCheckpoint.history.includes('Цена пропа') &&
     flexCheckpoint.history.includes('Чистыми') &&
-    flexCheckpoint.history.includes('−$70') &&
-    flexCheckpoint.history.includes('−$133') &&
+    flexCheckpoint.history.includes('−$156') &&
+    flexCheckpoint.history.includes('−$219') &&
     flexCheckpoint.persisted?.[0]?.outcome === 'sl' &&
-    flexCheckpoint.persisted?.[0]?.bybitAmount === 63 &&
+    flexCheckpoint.persisted?.[0]?.bybitAmount === null &&
     flexCheckpoint.persisted?.[0]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[0]?.bybitLoss === 126 &&
     flexCheckpoint.persisted?.[1]?.outcome === 'tp' &&
-    flexCheckpoint.persisted?.[1]?.bybitAmount === 126 &&
+    flexCheckpoint.persisted?.[1]?.bybitAmount === null &&
     flexCheckpoint.persisted?.[1]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[1]?.bybitLoss === 126 &&
+    standardCheckpoint.history.includes('+$50') &&
+    standardCheckpoint.history.includes('+$25') &&
+    standardCheckpoint.history.includes('Эффект Bybit от старта') &&
+    standardCheckpoint.history.includes('+$125') &&
+    standardCheckpoint.history.includes('Цена пропа') &&
+    standardCheckpoint.history.includes('−$66') &&
+    standardCheckpoint.history.includes('Чистыми от старта') &&
+    standardCheckpoint.history.includes('+$59') &&
+    standardCheckpoint.checkpoint.includes('Reset после breach') &&
+    standardCheckpoint.checkpoint.includes('−15%') &&
+    standardCheckpoint.checkpoint.includes('$56.10') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&

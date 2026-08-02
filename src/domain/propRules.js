@@ -32,6 +32,16 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
 
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
 const DAY_COUNT = 3;
+const STANDARD_SCHEME_10K = Object.freeze({
+  p1: Object.freeze({
+    sl: Object.freeze([50, 50, 25]),
+    tp: Object.freeze([-100, -150, -200]),
+  }),
+  p2: Object.freeze({
+    sl: Object.freeze([100, 100, 50]),
+    tp: Object.freeze([-130, -230, -330]),
+  }),
+});
 const EMPTY_DAY = Object.freeze({
   outcome: 'none',
   amount: 0,
@@ -46,6 +56,42 @@ const round = (value, decimals = 2) => {
 };
 
 const modelRules = (model) => MODEL_RULES[model] ?? MODEL_RULES.standard;
+
+export function getSchemeBybitPnl({
+  accountModel = 'standard',
+  accountSize = 10_000,
+  stage = 'p1',
+  day = 1,
+  outcome = 'none',
+} = {}) {
+  const path = accountModel === 'standard' ? STANDARD_SCHEME_10K[stage] : null;
+  const dayIndex = Number(day) - 1;
+  const basePnl = path?.[outcome]?.[dayIndex];
+  if (!Number.isFinite(basePnl)) return null;
+  return round(basePnl * Math.max(0, Number(accountSize) || 0) / 10_000);
+}
+
+export function getResetOffer({
+  stage = 'p1',
+  status = 'tracking',
+  accountSize = 10_000,
+  purchasePrice = 0,
+} = {}) {
+  if (status !== 'breached') return null;
+  const size = Math.max(0, Number(accountSize) || 0);
+  const discountPct = stage === 'p1' ? 15 : stage === 'p2' ? 10 : stage === 'funded' ? 7 : 0;
+  if (!discountPct || (stage === 'funded' && size >= 100_000)) return null;
+  const price = round(Math.max(0, Number(purchasePrice) || 0));
+  return {
+    stage,
+    label: stage === 'p1' ? 'Phase 1' : stage === 'p2' ? 'Phase 2' : 'Master',
+    discountPct,
+    purchasePrice: price,
+    resetPrice: round(price * (1 - discountPct / 100)),
+    restartStage: 'p1',
+    expiresInDays: 7,
+  };
+}
 
 const normalizeDay = (entry) => {
   const outcome = ['sl', 'tp'].includes(entry?.outcome) ? entry.outcome : 'none';
@@ -207,7 +253,7 @@ export function calculatePhaseCheckpoint({
   ));
   const mirroredStake = Math.max(0, Number(bybitStake) || 0);
   const mirroredLoss = Math.max(0, Number(bybitLoss) || mirroredStake);
-  const buildMirroredDay = (entry, index) => {
+  const buildMirroredDay = (entry, index, mirroredStage = rules.stage) => {
     if (entry.outcome === 'none' || entry.amount <= 0) return null;
     const fpPnl = signedPnl(entry);
     const fpLost = entry.outcome === 'sl';
@@ -216,12 +262,19 @@ export function calculatePhaseCheckpoint({
       mirroredStake > 0 ? dayStake * mirroredLoss / mirroredStake : mirroredLoss
     );
     const actualBybitAmount = entry.bybitAmount;
+    const schemePnl = getSchemeBybitPnl({
+      accountModel: rules.accountModel,
+      accountSize: size,
+      stage: mirroredStage,
+      day: index + 1,
+      outcome: entry.outcome,
+    });
     return {
       day: index + 1,
       outcome: entry.outcome,
       fpPnl: round(fpPnl),
       bybitOutcome: fpLost ? 'tp' : 'sl',
-      bybitPnl: round(fpLost
+      bybitPnl: schemePnl ?? round(fpLost
         ? actualBybitAmount ?? dayStake
         : -(actualBybitAmount ?? dayLoss)),
     };
@@ -236,7 +289,7 @@ export function calculatePhaseCheckpoint({
       normalizeDay(ledger?.[accountedStage]?.[index])
     ));
     return total + stageEntries.reduce((stageTotal, entry, index) => (
-      stageTotal + (buildMirroredDay(entry, index)?.bybitPnl ?? 0)
+      stageTotal + (buildMirroredDay(entry, index, accountedStage)?.bybitPnl ?? 0)
     ), 0);
   }, 0);
   const propCost = round(Math.max(0, Number(challengeCost) || 0));
@@ -245,6 +298,12 @@ export function calculatePhaseCheckpoint({
   if (dailyBreach || maxLossBreach) status = 'breached';
   else if (targetReached && dayRequirementMet) status = 'passed';
   else if (targetReached) status = 'target_reached_days_pending';
+  const resetOffer = getResetOffer({
+    stage: rules.stage,
+    status,
+    accountSize: size,
+    purchasePrice: propCost,
+  });
 
   return {
     ...rules,
@@ -268,6 +327,7 @@ export function calculatePhaseCheckpoint({
     bybitPnl: round(bybitPnl),
     propCost,
     netCashResult: round(bybitPnl - propCost),
+    resetOffer,
     status,
   };
 }

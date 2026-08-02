@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { formatMoney, formatSignedMoney } from '../format.js';
+import { getSchemeBybitPnl } from '../domain/propRules.js';
 import Field from './Field.jsx';
 import PhaseHistory from './PhaseHistory.jsx';
 
@@ -15,52 +16,44 @@ export default function PhaseCheckpoint({
   checkpoint,
   selectedDay,
   challengeCost,
-  officialChallengeCost,
-  discountedPurchase,
   suggestedBybitWin,
   suggestedBybitLoss,
   onDayChange,
-  onChallengeCostChange,
-  onDiscountedPurchaseChange,
   onRecord,
   onReset,
 }) {
   const entry = checkpoint.selectedEntry;
-  const recordedEntry = checkpoint.recordedDays.find(
-    (record) => record.day === Number(selectedDay),
-  );
-  const resolveBybitAmount = () => entry.bybitAmount ?? Math.abs(
-    recordedEntry?.bybitPnl ?? (
-      entry.outcome === 'sl'
-        ? Number(suggestedBybitWin) || 0
-        : entry.outcome === 'tp'
-          ? Number(suggestedBybitLoss) || 0
-          : 0
-    ),
-  );
   const [draft, setDraft] = useState(() => ({
     outcome: entry.outcome,
     amount: entry.amount,
-    bybitAmount: resolveBybitAmount(),
   }));
   useEffect(() => {
     setDraft({
       outcome: entry.outcome,
       amount: entry.amount,
-      bybitAmount: resolveBybitAmount(),
     });
   }, [
     checkpoint.stage,
     entry.amount,
-    entry.bybitAmount,
     entry.outcome,
-    recordedEntry?.bybitPnl,
     selectedDay,
-    suggestedBybitLoss,
-    suggestedBybitWin,
   ]);
   const canRecord = ['sl', 'tp'].includes(draft.outcome) &&
-    Number(draft.amount) > 0 && Number(draft.bybitAmount) >= 0;
+    Number(draft.amount) > 0;
+  const schemeBybitPnl = getSchemeBybitPnl({
+    accountModel: checkpoint.accountModel,
+    accountSize: checkpoint.accountSize,
+    stage: checkpoint.stage,
+    day: selectedDay,
+    outcome: draft.outcome,
+  });
+  const previewBybitPnl = schemeBybitPnl ?? (
+    draft.outcome === 'sl'
+      ? Number(suggestedBybitWin) || 0
+      : draft.outcome === 'tp'
+        ? -(Number(suggestedBybitLoss) || 0)
+        : 0
+  );
   const selectedDayRecorded = checkpoint.recordedDays.some(
     (record) => record.day === Number(selectedDay),
   );
@@ -104,11 +97,6 @@ export default function PhaseCheckpoint({
             onChange={(_field, value) => setDraft((current) => ({
               ...current,
               outcome: value,
-              bybitAmount: value === 'sl'
-                ? Number(suggestedBybitWin) || 0
-                : value === 'tp'
-                  ? Number(suggestedBybitLoss) || 0
-                  : 0,
             }))}
             options={[
               { value: 'none', label: 'Не задано' },
@@ -126,42 +114,26 @@ export default function PhaseCheckpoint({
             readOnly={draft.outcome === 'none'}
             hint="Чистый закрытый P&L этого дня"
           />
-          <Field
-            id="phaseBybitAmount"
-            label="Итог Bybit, $"
-            value={draft.bybitAmount}
-            onChange={(_field, value) => setDraft((current) => ({
-              ...current,
-              bybitAmount: value,
-            }))}
-            step="1"
-            min="0"
-            readOnly={draft.outcome === 'none'}
-            hint="Фактический итог всех сделок Bybit за день"
-          />
+          <div className="phase-checkpoint__scheme" aria-live="polite">
+            <span>Bybit по схеме</span>
+            <b className={previewBybitPnl >= 0 ? 'positive' : 'negative'}>
+              {draft.outcome === 'none' ? '—' : formatSignedMoney(previewBybitPnl)}
+            </b>
+            <small>
+              {draft.outcome === 'none'
+                ? 'Выберите исход дня'
+                : draft.outcome === 'sl' ? 'TP Bybit автоматически' : 'SL Bybit автоматически'}
+            </small>
+          </div>
           <Field
             id="challengeCost"
-            label="Оплачено за проп, $"
+            label="Цена пропа, $"
             value={challengeCost}
-            onChange={(_field, value) => onChallengeCostChange(value)}
+            onChange={() => {}}
             step="1"
             min="0"
-            readOnly={!discountedPurchase}
-            hint={`Базовая цена ${formatMoney(officialChallengeCost)} · отдельно от P&L`}
-            after={(
-              <label className="prop-discount-toggle">
-                <input
-                  type="checkbox"
-                  checked={Boolean(discountedPurchase)}
-                  onChange={(event) => onDiscountedPurchaseChange(event.target.checked)}
-                />
-                <span className="prop-discount-box" aria-hidden="true">✓</span>
-                <span className="prop-discount-copy">
-                  <b>Скидка / restart</b>
-                  <small>Phase 1 −15% · Phase 2 −10% · Master −7% (кроме 100K)</small>
-                </span>
-              </label>
-            )}
+            readOnly
+            hint="Исходная покупка · отдельно от P&L"
           />
         </div>
 
@@ -181,6 +153,20 @@ export default function PhaseCheckpoint({
           <button type="button" onClick={onReset}>Сбросить этап</button>
         </div>
       </div>
+
+      {checkpoint.resetOffer ? (
+        <div className="phase-checkpoint__reset" role="status">
+          <strong>Reset после breach</strong>
+          <span>
+            {checkpoint.resetOffer.label}: −{checkpoint.resetOffer.discountPct}% ·{' '}
+            {formatMoney(checkpoint.resetOffer.resetPrice, 2)} · доступен 7 дней
+          </span>
+          <small>
+            Текущий итог уже учитывает исходную покупку {formatMoney(checkpoint.propCost)};
+            будущий reset в него не вычитается.
+          </small>
+        </div>
+      ) : null}
 
       <dl className="phase-checkpoint__summary">
         <div>
