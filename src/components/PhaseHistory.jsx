@@ -16,10 +16,16 @@ export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
         </div>
         <div className="phase-history__economics" aria-label="Денежный итог журнала">
           <span>
-            Эффект Bybit от старта <b className={checkpoint.bybitPnl >= 0 ? 'positive' : 'negative'}>
+            Bybit факт <b className={checkpoint.bybitPnl >= 0 ? 'positive' : 'negative'}>
               {formatSignedMoney(checkpoint.bybitPnl)}
             </b>
           </span>
+          {checkpoint.stage === 'funded' ? (
+            <span>
+              Выплата FundingPips ({Math.round(checkpoint.profitSplit * 100)}%){' '}
+              <b className="positive">{formatSignedMoneyFixed(checkpoint.rewardAfterSplit)}</b>
+            </span>
+          ) : null}
           <span>
             Цена пропа{checkpoint.purchaseDiscountPct > 0
               ? ` (−${checkpoint.purchaseDiscountPct}%)`
@@ -27,7 +33,7 @@ export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
             <b className="negative">{formatSignedMoneyFixed(-checkpoint.propCost)}</b>
           </span>
           <span>
-            Чистыми от старта <b className={checkpoint.netCashResult >= 0 ? 'positive' : 'negative'}>
+            Фарм от старта <b className={checkpoint.netCashResult >= 0 ? 'positive' : 'negative'}>
               {formatSignedMoneyFixed(checkpoint.netCashResult)}
             </b>
           </span>
@@ -54,7 +60,12 @@ export default function PhaseHistory({ checkpoint, selectedDay, onDayChange }) {
                       </b>
                     </span>
                     <span>
-                      <small>Bybit {record.bybitOutcome.toUpperCase()}</small>
+                      <small>
+                        Bybit {record.bybitOutcome.toUpperCase()} ·{' '}
+                        {record.bybitSource === 'manual'
+                          ? 'ФАКТ'
+                          : record.bybitSource === 'reference' ? 'ЭТАЛОН' : 'ПОЗИЦИЯ'}
+                      </small>
                       <b className={record.bybitPnl >= 0 ? 'positive' : 'negative'}>
                         {formatSignedMoney(record.bybitPnl)}
                       </b>

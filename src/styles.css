@@ -566,7 +566,7 @@ html[data-theme="dark"] .theme-toggle__knob {
 
 .phase-checkpoint__controls {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .phase-checkpoint__controls .field,
@@ -576,9 +576,12 @@ html[data-theme="dark"] .theme-toggle__knob {
 }
 
 .phase-checkpoint__scheme {
-  display: grid;
-  align-content: center;
-  gap: 5px;
+  display: flex;
+  grid-column: 1 / -1;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--color-line);
 }
 
 .phase-checkpoint__scheme span,
@@ -597,11 +600,38 @@ html[data-theme="dark"] .theme-toggle__knob {
 
 .phase-checkpoint__scheme b {
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .phase-checkpoint__scheme small {
+  flex: 1;
   color: var(--color-muted);
   font-size: 0.54rem;
+}
+
+.phase-checkpoint__scheme button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.phase-checkpoint__scheme button:hover,
+.phase-checkpoint__scheme button:focus-visible {
+  outline: 0;
+  background: var(--color-accent-soft);
+}
+
+.phase-checkpoint__scheme button:disabled {
+  border-color: var(--color-line);
+  color: var(--color-muted);
+  cursor: not-allowed;
 }
 
 .prop-purchase-discount {
@@ -2925,6 +2955,15 @@ tbody tr:hover {
   .phase-checkpoint__scheme {
     border-right: 0;
     border-bottom: 1px solid var(--color-line);
+  }
+
+  .phase-checkpoint__scheme {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .phase-checkpoint__scheme button {
+    width: 100%;
   }
 
   .phase-checkpoint__rules {

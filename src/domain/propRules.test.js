@@ -204,6 +204,7 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
       fpPnl: -1_000,
       bybitOutcome: 'tp',
       bybitPnl: 63,
+      bybitSource: 'position',
     },
     {
       day: 2,
@@ -211,6 +212,7 @@ test('recorded day history keeps prior FP results and their mirrored Bybit effec
       fpPnl: 3_500,
       bybitOutcome: 'sl',
       bybitPnl: -126,
+      bybitSource: 'position',
     },
   ]);
   assert.equal(checkpoint.bybitPnl, -63);
@@ -357,4 +359,91 @@ test('checkpoint identifies a hard loss breach and a separate 60% concentration 
   assert.equal(concentrated.concentrationThreshold, 900);
   assert.equal(concentrated.concentrationTriggered, true);
   assert.equal(concentrated.status, 'tracking');
+});
+
+test('manual Bybit outcome overrides the Standard reference route', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'sl',
+    amount: 400,
+    bybitOutcome: 'sl',
+    bybitAmount: 80,
+  });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'p1',
+    selectedDay: 1,
+    ledger,
+    challengeCost: 66,
+  });
+
+  assert.deepEqual(checkpoint.recordedDays[0], {
+    day: 1,
+    outcome: 'sl',
+    fpPnl: -400,
+    bybitOutcome: 'sl',
+    bybitPnl: -80,
+    bybitSource: 'manual',
+  });
+  assert.equal(checkpoint.bybitPnl, -80);
+  assert.equal(checkpoint.netCashResult, -146);
+});
+
+test('a minus $546 route recommends a rounded $1,000 funded hit and closes at plus $54', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'tp',
+    amount: 800,
+    bybitOutcome: 'sl',
+    bybitAmount: 200,
+  });
+  ledger = updatePhaseLedger(ledger, 'p2', 1, {
+    outcome: 'tp',
+    amount: 500,
+    bybitOutcome: 'sl',
+    bybitAmount: 280,
+  });
+
+  const beforeFundedHit = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'funded',
+    selectedDay: 1,
+    ledger,
+    profitSplit: 0.85,
+    fundedPayout: 8,
+    bybitLoss: 250,
+    challengeCost: 66,
+  });
+
+  assert.equal(beforeFundedHit.bybitPnlBeforeSelectedDay, -480);
+  assert.equal(beforeFundedHit.netCashResult, -546);
+  assert.equal(beforeFundedHit.farmBreakEvenTpAmount, 936.47);
+  assert.equal(beforeFundedHit.recommendedFarmTpAmount, 1_000);
+  assert.equal(beforeFundedHit.projectedFarmNetAtRecommendedTp, 54);
+
+  ledger = updatePhaseLedger(ledger, 'funded', 1, {
+    outcome: 'tp',
+    amount: 1_000,
+    bybitOutcome: 'sl',
+    bybitAmount: 250,
+  });
+  const afterFundedHit = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 10_000,
+    stage: 'funded',
+    selectedDay: 1,
+    ledger,
+    profitSplit: 0.85,
+    fundedPayout: 8,
+    bybitLoss: 250,
+    challengeCost: 66,
+  });
+
+  assert.equal(afterFundedHit.realizedPnl, 1_000);
+  assert.equal(afterFundedHit.rewardAfterSplit, 850);
+  assert.equal(afterFundedHit.bybitPnl, -730);
+  assert.equal(afterFundedHit.netCashResult, 54);
 });

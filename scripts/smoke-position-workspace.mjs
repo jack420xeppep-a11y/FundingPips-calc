@@ -442,9 +442,50 @@ try {
     }))()`);
     const ready = state.checkpoint?.includes('Правила и подсказки') &&
       state.checkpoint?.includes('4 / 4 / 2%') &&
-      state.history?.includes('Чистыми от старта') &&
+      state.history?.includes('Фарм от старта') &&
       state.history?.includes('+$59');
     if (!ready) throw new Error(`Standard $59 outcome is not ready: ${JSON.stringify(state)}`);
+  });
+  await evaluate(`(() => {
+    const changeSelect = (selector, value) => {
+      const field = document.querySelector(selector);
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    changeSelect('#bybitOutcome', 'sl');
+    const amount = document.querySelector('#bybitAmount');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(amount, '80');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.phase-checkpoint__record').click();
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() => {
+      const history = document.querySelector('.phase-history').innerText;
+      return history.includes('Bybit SL · ФАКТ') &&
+        history.includes('−$80') && history.includes('−$46.00');
+    })()`);
+    if (!ready) throw new Error('Manual Bybit result did not override the reference');
+  });
+  const manualBybitOverride = await evaluate(
+    "document.querySelector('.phase-history').innerText",
+  );
+  await evaluate("document.querySelector('.phase-checkpoint__scheme button').click()");
+  await retry(async () => {
+    const ready = await evaluate(`(() =>
+      document.querySelector('#bybitOutcome').value === 'tp' &&
+      document.querySelector('#bybitAmount').value === '25'
+    )()`);
+    if (!ready) throw new Error('Reference Bybit values were not restored in the form');
+  });
+  await evaluate("document.querySelector('.phase-checkpoint__record').click()");
+  await retry(async () => {
+    const ready = await evaluate(`(() => {
+      const history = document.querySelector('.phase-history').innerText;
+      return history.includes('Bybit TP · ЭТАЛОН') && history.includes('+$59.00');
+    })()`);
+    if (!ready) throw new Error('Reference Bybit result was not restored');
   });
   const standardCheckpoint = await evaluate(`(() => ({
     history: document.querySelector('.phase-history').innerText,
@@ -776,25 +817,31 @@ try {
     flexCheckpoint.history.includes('Bybit SL') &&
     flexCheckpoint.history.includes('−$126') &&
     flexCheckpoint.history.includes('Цена пропа') &&
-    flexCheckpoint.history.includes('Чистыми') &&
+    flexCheckpoint.history.includes('Фарм от старта') &&
     flexCheckpoint.history.includes('−$156') &&
     flexCheckpoint.history.includes('−$219') &&
     flexCheckpoint.persisted?.[0]?.outcome === 'sl' &&
-    flexCheckpoint.persisted?.[0]?.bybitAmount === null &&
+    flexCheckpoint.persisted?.[0]?.bybitAmount === 63 &&
+    flexCheckpoint.persisted?.[0]?.bybitOutcome === 'tp' &&
+    flexCheckpoint.persisted?.[0]?.bybitSource === 'position' &&
     flexCheckpoint.persisted?.[0]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[0]?.bybitLoss === 126 &&
     flexCheckpoint.persisted?.[1]?.outcome === 'tp' &&
-    flexCheckpoint.persisted?.[1]?.bybitAmount === null &&
+    flexCheckpoint.persisted?.[1]?.bybitAmount === 126 &&
+    flexCheckpoint.persisted?.[1]?.bybitOutcome === 'sl' &&
+    flexCheckpoint.persisted?.[1]?.bybitSource === 'position' &&
     flexCheckpoint.persisted?.[1]?.bybitStake === 63 &&
     flexCheckpoint.persisted?.[1]?.bybitLoss === 126 &&
     standardCheckpoint.history.includes('+$50') &&
     standardCheckpoint.history.includes('+$25') &&
-    standardCheckpoint.history.includes('Эффект Bybit от старта') &&
+    standardCheckpoint.history.includes('Bybit факт') &&
     standardCheckpoint.history.includes('+$125') &&
     standardCheckpoint.history.includes('Цена пропа') &&
     standardCheckpoint.history.includes('−$66') &&
-    standardCheckpoint.history.includes('Чистыми от старта') &&
+    standardCheckpoint.history.includes('Фарм от старта') &&
     standardCheckpoint.history.includes('+$59') &&
+    manualBybitOverride.includes('Bybit SL · ФАКТ') &&
+    manualBybitOverride.includes('−$46.00') &&
     standardCheckpoint.checkpoint.includes('Правила и подсказки') &&
     standardCheckpoint.checkpoint.includes('4 / 4 / 2%') &&
     standardCheckpoint.checkpoint.includes('SL дня до $200') &&

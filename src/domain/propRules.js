@@ -32,6 +32,7 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
 
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
 const MAX_DAY_COUNT = 4;
+const FUNDED_TP_STEP = 100;
 const EVALUATION_LOSS_PLANS = Object.freeze({
   standard: Object.freeze([4, 4, 2]),
   flex: Object.freeze([3, 3, 3, 3]),
@@ -49,7 +50,9 @@ const STANDARD_SCHEME_10K = Object.freeze({
 const EMPTY_DAY = Object.freeze({
   outcome: 'none',
   amount: 0,
+  bybitOutcome: null,
   bybitAmount: null,
+  bybitSource: null,
   bybitStake: null,
   bybitLoss: null,
 });
@@ -78,6 +81,12 @@ export function getSchemeBybitPnl({
 const normalizeDay = (entry) => {
   const outcome = ['sl', 'tp'].includes(entry?.outcome) ? entry.outcome : 'none';
   const amount = Math.max(0, Number(entry?.amount) || 0);
+  const bybitOutcome = ['tp', 'sl', 'none'].includes(entry?.bybitOutcome)
+    ? entry.bybitOutcome
+    : null;
+  const bybitSource = ['manual', 'reference', 'position'].includes(entry?.bybitSource)
+    ? entry.bybitSource
+    : null;
   const rawBybitAmount = Number(entry?.bybitAmount);
   const bybitAmount = entry?.bybitAmount !== null && entry?.bybitAmount !== undefined &&
     Number.isFinite(rawBybitAmount)
@@ -93,7 +102,15 @@ const normalizeDay = (entry) => {
     Number.isFinite(rawBybitLoss)
     ? round(Math.max(0, rawBybitLoss))
     : null;
-  return { outcome, amount: round(amount), bybitAmount, bybitStake, bybitLoss };
+  return {
+    outcome,
+    amount: round(amount),
+    bybitOutcome,
+    bybitAmount,
+    bybitSource,
+    bybitStake,
+    bybitLoss,
+  };
 };
 
 export function getPropModelPreset(accountModel = 'standard') {
@@ -267,14 +284,40 @@ export function calculatePhaseCheckpoint({
       day: index + 1,
       outcome: entry.outcome,
     });
+    const manualBybitOutcome = ['tp', 'sl', 'none'].includes(entry.bybitOutcome)
+      ? entry.bybitOutcome
+      : null;
+    let bybitOutcome;
+    let bybitPnl;
+    let bybitSource;
+
+    if (manualBybitOutcome !== null) {
+      bybitOutcome = manualBybitOutcome;
+      bybitPnl = manualBybitOutcome === 'tp'
+        ? actualBybitAmount ?? 0
+        : manualBybitOutcome === 'sl'
+          ? -(actualBybitAmount ?? 0)
+          : 0;
+      bybitSource = entry.bybitSource ?? 'manual';
+    } else if (schemePnl !== null) {
+      bybitOutcome = schemePnl >= 0 ? 'tp' : 'sl';
+      bybitPnl = schemePnl;
+      bybitSource = 'reference';
+    } else {
+      bybitOutcome = fpLost ? 'tp' : 'sl';
+      bybitPnl = fpLost
+        ? actualBybitAmount ?? dayStake
+        : -(actualBybitAmount ?? dayLoss);
+      bybitSource = 'position';
+    }
+
     return {
       day: index + 1,
       outcome: entry.outcome,
       fpPnl: round(fpPnl),
-      bybitOutcome: fpLost ? 'tp' : 'sl',
-      bybitPnl: schemePnl ?? round(fpLost
-        ? actualBybitAmount ?? dayStake
-        : -(actualBybitAmount ?? dayLoss)),
+      bybitOutcome,
+      bybitPnl: round(bybitPnl),
+      bybitSource,
     };
   };
   const recordedDays = entries.flatMap((entry, index) => {
@@ -282,7 +325,7 @@ export function calculatePhaseCheckpoint({
     return record ? [record] : [];
   });
   const accountedStages = STAGES.slice(0, STAGES.indexOf(rules.stage) + 1);
-  const bybitPnl = accountedStages.reduce((total, accountedStage) => {
+  const getStageEntries = (accountedStage) => {
     const accountedRules = getPropRules({
       accountModel: rules.accountModel,
       accountSize: size,
@@ -290,12 +333,24 @@ export function calculatePhaseCheckpoint({
       profitSplit,
       fundedPayout,
     });
-    const stageEntries = Array.from({ length: accountedRules.dayCount }, (_, index) => (
+    return Array.from({ length: accountedRules.dayCount }, (_, index) => (
       normalizeDay(ledger?.[accountedStage]?.[index])
     ));
-    return total + stageEntries.reduce((stageTotal, entry, index) => (
+  };
+  const sumStageBybit = (accountedStage, stageEntries) => (
+    stageEntries.reduce((stageTotal, entry, index) => (
       stageTotal + (buildMirroredDay(entry, index, accountedStage)?.bybitPnl ?? 0)
-    ), 0);
+    ), 0)
+  );
+  const bybitPnl = accountedStages.reduce((total, accountedStage) => {
+    return total + sumStageBybit(accountedStage, getStageEntries(accountedStage));
+  }, 0);
+  const bybitPnlBeforeSelectedDay = accountedStages.reduce((total, accountedStage) => {
+    const stageEntries = getStageEntries(accountedStage);
+    const includedEntries = accountedStage === rules.stage
+      ? stageEntries.slice(0, day - 1)
+      : stageEntries;
+    return total + sumStageBybit(accountedStage, includedEntries);
   }, 0);
   const propBaseCost = round(Math.max(0, Number(challengeCost) || 0));
   const normalizedPurchaseDiscountPct = round(Math.min(
@@ -303,6 +358,46 @@ export function calculatePhaseCheckpoint({
     Math.max(0, Number(purchaseDiscountPct) || 0),
   ));
   const propCost = round(propBaseCost * (1 - normalizedPurchaseDiscountPct / 100));
+  const normalizedProfitSplit = Math.max(
+    0,
+    Number(profitSplit) || modelRules(rules.accountModel).defaultProfitSplit,
+  );
+  const rewardGross = rules.stage === 'funded' ? Math.max(0, realizedPnl) : 0;
+  const rewardAfterSplit = round(rewardGross * normalizedProfitSplit);
+  const referenceBybitTpPnl = getSchemeBybitPnl({
+    accountModel: rules.accountModel,
+    accountSize: size,
+    stage: rules.stage,
+    day,
+    outcome: 'tp',
+  });
+  const projectedBybitLoss = round(Math.abs(
+    referenceBybitTpPnl ?? mirroredLoss,
+  ));
+  const farmBreakEvenTpAmount = rules.stage === 'funded' && normalizedProfitSplit > 0
+    ? round(Math.max(
+      0,
+      (propCost - bybitPnlBeforeSelectedDay + projectedBybitLoss) /
+        normalizedProfitSplit - previousPnl,
+    ))
+    : null;
+  const rawRecommendedFarmTpAmount = Math.max(
+    recommendedTpAmount,
+    farmBreakEvenTpAmount ?? 0,
+  );
+  const recommendedFarmTpAmount = rules.stage === 'funded'
+    ? round(Math.ceil(rawRecommendedFarmTpAmount / FUNDED_TP_STEP) * FUNDED_TP_STEP)
+    : round(recommendedTpAmount);
+  const projectedRewardAfterSplit = rules.stage === 'funded'
+    ? Math.max(0, previousPnl + recommendedFarmTpAmount) * normalizedProfitSplit
+    : 0;
+  const projectedFarmNetAtRecommendedTp = rules.stage === 'funded'
+    ? round(
+      projectedRewardAfterSplit + bybitPnlBeforeSelectedDay -
+        projectedBybitLoss - propCost,
+    )
+    : null;
+  const netCashResult = round(bybitPnl + rewardAfterSplit - propCost);
 
   let status = 'tracking';
   if (dailyBreach || maxLossBreach) status = 'breached';
@@ -334,10 +429,18 @@ export function calculatePhaseCheckpoint({
     concentrationTriggered,
     recordedDays,
     bybitPnl: round(bybitPnl),
+    bybitPnlBeforeSelectedDay: round(bybitPnlBeforeSelectedDay),
     propBaseCost,
     purchaseDiscountPct: normalizedPurchaseDiscountPct,
     propCost,
-    netCashResult: round(bybitPnl - propCost),
+    profitSplit: normalizedProfitSplit,
+    rewardGross: round(rewardGross),
+    rewardAfterSplit,
+    projectedBybitLoss,
+    farmBreakEvenTpAmount,
+    recommendedFarmTpAmount,
+    projectedFarmNetAtRecommendedTp,
+    netCashResult,
     status,
   };
 }

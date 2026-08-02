@@ -64,7 +64,7 @@ test('all controls from the original calculator are represented in React', async
   for (const field of requiredFields) assert.match(app, new RegExp(field));
 });
 
-test('position workspace exposes a compact phase day ledger with explicit SL and TP amounts', async () => {
+test('position workspace records explicit FundingPips and Bybit outcomes against a reference route', async () => {
   const app = await read('./App.jsx');
   const controls = await read('./components/PositionControls.jsx');
   const checkpoint = await read('./components/PhaseCheckpoint.jsx');
@@ -79,9 +79,11 @@ test('position workspace exposes a compact phase day ledger with explicit SL and
   assert.match(checkpoint, /День этапа/);
   assert.match(checkpoint, /SL \/ убыток/);
   assert.match(checkpoint, /TP \/ прибыль/);
-  assert.match(checkpoint, /Итог дня, \$/);
-  assert.doesNotMatch(checkpoint, /Итог Bybit, \$/);
-  assert.match(checkpoint, /Bybit по схеме/);
+  assert.match(checkpoint, /Итог FundingPips, \$/);
+  assert.match(checkpoint, /Что случилось на Bybit/);
+  assert.match(checkpoint, /Итог Bybit, \$/);
+  assert.match(checkpoint, /Эталон схемы/);
+  assert.match(checkpoint, /Подставить эталон/);
   assert.match(checkpoint, /challengeCost/);
   assert.match(checkpoint, /Цена пропа, \$/);
   assert.match(checkpoint, /Куплен со скидкой/);
@@ -93,9 +95,11 @@ test('position workspace exposes a compact phase day ledger with explicit SL and
   assert.match(checkpoint, /Записать день/);
   assert.match(checkpoint, /<PhaseHistory/);
   assert.match(history, /История дней/);
-  assert.match(history, /Эффект Bybit/);
+  assert.match(history, /Bybit факт/);
+  assert.match(history, /Выплата FundingPips/);
   assert.match(history, /Цена пропа/);
-  assert.match(history, /Чистыми/);
+  assert.match(history, /Фарм от старта/);
+  assert.match(checkpoint, /TP для нуля/);
   assert.match(checkpoint, /onRecord/);
   assert.match(checkpoint, /До цели/);
   assert.match(checkpoint, /Запас до общего лимита/);
