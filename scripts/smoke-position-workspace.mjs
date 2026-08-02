@@ -517,6 +517,52 @@ try {
     history: document.querySelector('.phase-history').innerText,
   }))()`);
 
+  await evaluate(`(() => {
+    const stage = document.querySelector('#stage');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
+      .set.call(stage, 'funded');
+    stage.dispatchEvent(new Event('input', { bubbles: true }));
+    stage.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(`(() => {
+      const plan = document.querySelector('.payout-plan');
+      const text = plan?.innerText.toLocaleLowerCase('ru-RU') ?? '';
+      return plan && text.includes('план выплаты') &&
+        text.includes('80% · 14 дней') &&
+        text.includes('tp нуля') &&
+        text.includes('tp желаемой прибыли') &&
+        text.includes('tp ставить');
+    })()`);
+    if (!ready) {
+      const state = await evaluate(`(() => ({
+        stage: document.querySelector('#stage')?.value,
+        model: document.querySelector('#accountModel')?.value,
+        plan: document.querySelector('.payout-plan')?.innerText ?? null,
+      }))()`);
+      throw new Error(`Standard payout plan is not ready: ${JSON.stringify(state)}`);
+    }
+  });
+  await evaluate(`(() => {
+    const date = document.querySelector('#firstMasterTradeDate');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      .set.call(date, '2026-08-01');
+    date.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await retry(async () => {
+    const ready = await evaluate(
+      "document.querySelector('.payout-plan').innerText.includes('15.08.2026')",
+    );
+    if (!ready) throw new Error('Payout availability date was not calculated');
+  });
+  const payoutPlan = await evaluate(`(() => ({
+    desiredNetProfit: document.querySelector('#desiredNetProfit').value,
+    firstMasterTradeDate: document.querySelector('#firstMasterTradeDate').value,
+    text: document.querySelector('.payout-plan').innerText,
+  }))()`);
+
   await evaluate("document.querySelector('.mobile-advanced-toggle').click()");
   await delay(100);
   await evaluate(`(() => {
@@ -845,6 +891,7 @@ try {
     standardCheckpoint.checkpoint.includes('Правила и подсказки') &&
     standardCheckpoint.checkpoint.includes('4 / 4 / 2%') &&
     standardCheckpoint.checkpoint.includes('SL дня до $200') &&
+    standardCheckpoint.checkpoint.toLocaleLowerCase('ru-RU').includes('факт tp bybit') &&
     standardCheckpoint.checkpoint.includes('Рекомендуемый TP') &&
     standardCheckpoint.checkpoint.includes('$1,580') &&
     standardDiscount.price === '56.1' &&
@@ -852,6 +899,13 @@ try {
     standardDiscount.text.toLowerCase().includes('куплен со скидкой') &&
     standardDiscount.history.includes('−$56.10') &&
     standardDiscount.history.includes('+$68.90') &&
+    payoutPlan.desiredNetProfit === '100' &&
+    payoutPlan.firstMasterTradeDate === '2026-08-01' &&
+    payoutPlan.text.includes('80% · 14 дней') &&
+    payoutPlan.text.includes('15.08.2026') &&
+    payoutPlan.text.includes('Profit Concentration') &&
+    payoutPlan.text.includes('Striking') &&
+    payoutPlan.text.includes('Equity') &&
     gold.instrument === 'XAUUSD' &&
     gold.entryPrice === '2900' &&
     gold.resultVisible &&
@@ -910,6 +964,7 @@ try {
     flexCheckpoint,
     standardCheckpoint,
     standardDiscount,
+    payoutPlan,
     gold,
     livePrices: { gold: goldLive, euro: euroLive, pound: poundLive },
     intelligence,

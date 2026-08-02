@@ -391,7 +391,7 @@ test('manual Bybit outcome overrides the Standard reference route', () => {
   assert.equal(checkpoint.netCashResult, -146);
 });
 
-test('a minus $546 route recommends a rounded $1,000 funded hit and closes at plus $54', () => {
+test('Standard rejects a Flex-only 85% split and calculates all three payout targets at 80%', () => {
   let ledger = createEmptyPhaseLedger();
   ledger = updatePhaseLedger(ledger, 'p1', 1, {
     outcome: 'tp',
@@ -416,13 +416,24 @@ test('a minus $546 route recommends a rounded $1,000 funded hit and closes at pl
     fundedPayout: 8,
     bybitLoss: 250,
     challengeCost: 66,
+    desiredNetProfit: 100,
+    firstMasterTradeDate: '2026-08-02',
+    now: Date.UTC(2026, 7, 4),
   });
 
+  assert.equal(beforeFundedHit.profitSplit, 0.8);
   assert.equal(beforeFundedHit.bybitPnlBeforeSelectedDay, -480);
   assert.equal(beforeFundedHit.netCashResult, -546);
-  assert.equal(beforeFundedHit.farmBreakEvenTpAmount, 936.47);
-  assert.equal(beforeFundedHit.recommendedFarmTpAmount, 1_000);
-  assert.equal(beforeFundedHit.projectedFarmNetAtRecommendedTp, 54);
+  assert.equal(beforeFundedHit.farmBreakEvenTpAmount, 995);
+  assert.equal(beforeFundedHit.desiredNetTpAmount, 1_120);
+  assert.equal(beforeFundedHit.payoutReadyTpAmount, 1_200);
+  assert.equal(beforeFundedHit.recommendedFarmTpAmount, 1_200);
+  assert.equal(beforeFundedHit.projectedFarmNetAtRecommendedTp, 164);
+  assert.equal(beforeFundedHit.minimumRewardAmount, 100);
+  assert.equal(beforeFundedHit.minimumRewardGrossAmount, 125);
+  assert.equal(beforeFundedHit.rewardCycleDays, 14);
+  assert.equal(beforeFundedHit.payoutAvailableDate, '2026-08-16');
+  assert.equal(beforeFundedHit.payoutTimeReady, false);
 
   ledger = updatePhaseLedger(ledger, 'funded', 1, {
     outcome: 'tp',
@@ -440,10 +451,114 @@ test('a minus $546 route recommends a rounded $1,000 funded hit and closes at pl
     fundedPayout: 8,
     bybitLoss: 250,
     challengeCost: 66,
+    desiredNetProfit: 100,
   });
 
   assert.equal(afterFundedHit.realizedPnl, 1_000);
-  assert.equal(afterFundedHit.rewardAfterSplit, 850);
+  assert.equal(afterFundedHit.rewardAfterSplit, 800);
   assert.equal(afterFundedHit.bybitPnl, -730);
-  assert.equal(afterFundedHit.netCashResult, 54);
+  assert.equal(afterFundedHit.netCashResult, 4);
+});
+
+test('Flex 85% produces a separate desired-profit target without changing recorded Bybit facts', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'tp',
+    amount: 2_500,
+    bybitOutcome: 'sl',
+    bybitAmount: 200,
+  });
+  ledger = updatePhaseLedger(ledger, 'p2', 1, {
+    outcome: 'tp',
+    amount: 1_500,
+    bybitOutcome: 'sl',
+    bybitAmount: 280,
+  });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'flex',
+    accountSize: 10_000,
+    stage: 'funded',
+    selectedDay: 1,
+    ledger,
+    profitSplit: 0.85,
+    fundedPayout: 8,
+    bybitLoss: 250,
+    challengeCost: 66,
+    desiredNetProfit: 100,
+  });
+
+  assert.equal(checkpoint.profitSplit, 0.85);
+  assert.equal(checkpoint.farmBreakEvenTpAmount, 936.47);
+  assert.equal(checkpoint.desiredNetTpAmount, 1_054.12);
+  assert.equal(checkpoint.payoutReadyTpAmount, 1_100);
+  assert.equal(checkpoint.projectedFarmNetAtRecommendedTp, 139);
+});
+
+test('25K concentration creates a four-profitable-day payout route on Master', () => {
+  let ledger = createEmptyPhaseLedger();
+  ledger = updatePhaseLedger(ledger, 'p1', 1, {
+    outcome: 'tp',
+    amount: 1_500,
+    bybitOutcome: 'sl',
+    bybitAmount: 250,
+  });
+  ledger = updatePhaseLedger(ledger, 'funded', 1, {
+    outcome: 'tp',
+    amount: 125,
+    bybitOutcome: 'sl',
+    bybitAmount: 25,
+  });
+  ledger = updatePhaseLedger(ledger, 'funded', 2, {
+    outcome: 'tp',
+    amount: 125,
+    bybitOutcome: 'sl',
+    bybitAmount: 25,
+  });
+
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 25_000,
+    stage: 'funded',
+    selectedDay: 2,
+    ledger,
+    profitSplit: 0.8,
+    fundedPayout: 8,
+    bybitLoss: 250,
+    challengeCost: 156,
+  });
+
+  assert.equal(checkpoint.evaluationConcentrationTriggered, true);
+  assert.equal(checkpoint.payoutProfitableDaysRequired, 4);
+  assert.equal(checkpoint.payoutProfitableDaysCompleted, 2);
+  assert.equal(checkpoint.payoutProfitableDaysRemaining, 2);
+  assert.equal(checkpoint.dayCount, 4);
+  assert.equal(checkpoint.strikingThresholdAmount, null);
+});
+
+test('Standard Master above 25K exposes the 1.2% lifetime Striking threshold', () => {
+  const checkpoint = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 50_000,
+    stage: 'funded',
+    selectedDay: 1,
+    ledger: createEmptyPhaseLedger(),
+    profitSplit: 0.8,
+  });
+
+  assert.equal(checkpoint.strikingThresholdPct, 1.2);
+  assert.equal(checkpoint.strikingThresholdAmount, 600);
+
+  const nonEightPercentRoute = calculatePhaseCheckpoint({
+    accountModel: 'standard',
+    accountSize: 50_000,
+    stage: 'funded',
+    selectedDay: 1,
+    ledger: createEmptyPhaseLedger(),
+    profitSplit: 0.8,
+    fundedPayout: 5,
+  });
+
+  assert.equal(nonEightPercentRoute.strikingThresholdPct, null);
+  assert.equal(nonEightPercentRoute.strikingThresholdAmount, null);
 });

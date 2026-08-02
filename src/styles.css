@@ -961,6 +961,158 @@ html[data-theme="dark"] .theme-toggle__knob {
   font-size: 0.6rem;
 }
 
+.payout-plan {
+  border-top: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-positive) 2%, var(--color-surface));
+}
+
+.payout-plan__head {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.payout-plan__head h2 {
+  margin: 3px 0 0;
+  font-size: 0.92rem;
+}
+
+.payout-plan__identity {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.payout-plan__identity span,
+.payout-plan__identity strong,
+.payout-plan__farm span,
+.payout-plan__farm small,
+.payout-plan__targets span,
+.payout-plan__targets small,
+.payout-plan__eligibility span,
+.payout-plan__eligibility small,
+.payout-plan__guards {
+  font-family: var(--font-mono);
+}
+
+.payout-plan__identity span,
+.payout-plan__farm span,
+.payout-plan__targets span,
+.payout-plan__eligibility span {
+  color: var(--color-muted);
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.payout-plan__identity strong {
+  color: var(--color-positive);
+  font-size: 0.76rem;
+}
+
+.payout-plan__inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(210px, 1.2fr);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.payout-plan__inputs .field,
+.payout-plan__farm {
+  padding: 11px 16px;
+  border-right: 1px solid var(--color-line);
+}
+
+.payout-plan__farm {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border-right: 0;
+}
+
+.payout-plan__farm strong {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.payout-plan__farm small,
+.payout-plan__targets small,
+.payout-plan__eligibility small {
+  color: var(--color-muted);
+  font-size: 0.54rem;
+  line-height: 1.4;
+}
+
+.payout-plan__targets,
+.payout-plan__eligibility {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--color-line);
+}
+
+.payout-plan__targets article,
+.payout-plan__eligibility > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px 16px;
+  border-right: 1px solid var(--color-line);
+}
+
+.payout-plan__targets article:last-child,
+.payout-plan__eligibility > div:last-child {
+  border-right: 0;
+}
+
+.payout-plan__targets strong,
+.payout-plan__eligibility strong {
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.payout-plan__targets article.is-primary {
+  box-shadow: inset 3px 0 0 var(--color-positive);
+  background: color-mix(in srgb, var(--color-positive) 8%, transparent);
+}
+
+.payout-plan__targets article.is-primary strong {
+  color: var(--color-positive);
+  font-size: 1.05rem;
+}
+
+.payout-plan__guards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.payout-plan__guards p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 16px;
+  border-right: 1px solid var(--color-line);
+  color: var(--color-muted);
+  font-size: 0.56rem;
+  line-height: 1.45;
+}
+
+.payout-plan__guards p:last-child {
+  border-right: 0;
+}
+
+.payout-plan__guards strong {
+  color: var(--color-ink);
+}
+
+.payout-plan__guards .is-warning {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+}
+
 .field {
   min-width: 0;
 }
@@ -3016,6 +3168,35 @@ tbody tr:hover {
   .phase-history__list > div:not(:last-child) {
     border-right: 0;
     border-bottom: 1px solid var(--color-line);
+  }
+
+  .payout-plan__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payout-plan__identity {
+    text-align: left;
+  }
+
+  .payout-plan__inputs,
+  .payout-plan__targets,
+  .payout-plan__eligibility,
+  .payout-plan__guards {
+    grid-template-columns: 1fr;
+  }
+
+  .payout-plan__inputs .field,
+  .payout-plan__farm,
+  .payout-plan__targets article,
+  .payout-plan__eligibility > div,
+  .payout-plan__guards p {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .payout-plan__guards p:last-child {
+    border-bottom: 0;
   }
 
   .section-head {

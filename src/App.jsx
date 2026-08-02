@@ -5,6 +5,7 @@ import PositionControls from './components/PositionControls.jsx';
 import IntelligencePanel from './components/IntelligencePanel.jsx';
 import IntelligenceStrip from './components/IntelligenceStrip.jsx';
 import PhaseCheckpoint from './components/PhaseCheckpoint.jsx';
+import PayoutPlan from './components/PayoutPlan.jsx';
 import PositionResult from './components/PositionResult.jsx';
 import RecoveryView from './components/RecoveryView.jsx';
 import RiskRail from './components/RiskRail.jsx';
@@ -78,6 +79,11 @@ const initialRecovery = {
   rangeMultiplier: 2,
 };
 
+const initialPayoutPlan = {
+  desiredNetProfit: 100,
+  firstMasterTradeDate: '',
+};
+
 const STRATEGY_VALUE_FIELDS = [
   'bybitP1',
   'bybitP2',
@@ -142,6 +148,7 @@ export default function App() {
   const [positionValues, setPositionValues] = useState(initialPosition);
   const [phaseLedgers, setPhaseLedgers] = useState(() => readPhaseLedgers());
   const [phaseDay, setPhaseDay] = useState(1);
+  const [payoutPlanValues, setPayoutPlanValues] = useState(initialPayoutPlan);
   const [recoveryValues, setRecoveryValues] = useState(initialRecovery);
   const [strategyGoal, setStrategyGoal] = useState('balanced');
   const [recommendation, setRecommendation] = useState(null);
@@ -225,7 +232,9 @@ export default function App() {
     purchaseDiscountPct: positionValues.purchaseDiscountEnabled
       ? positionValues.purchaseDiscountPct
       : 0,
-  }), [phaseDay, phaseLedger, position, positionValues]);
+    desiredNetProfit: payoutPlanValues.desiredNetProfit,
+    firstMasterTradeDate: payoutPlanValues.firstMasterTradeDate,
+  }), [phaseDay, phaseLedger, payoutPlanValues, position, positionValues]);
   const scenarios = useMemo(() => calculateScenarios(economicsValues), [economicsValues]);
   const breakEven = useMemo(() => calculateBreakEven(economicsValues), [economicsValues]);
   const strategyPresets = useMemo(
@@ -423,6 +432,10 @@ export default function App() {
     }));
   };
 
+  const updatePayoutPlan = (field, value) => {
+    setPayoutPlanValues((current) => ({ ...current, [field]: value }));
+  };
+
   const resetCheckpointStage = () => {
     const empty = createEmptyPhaseLedger();
     setPhaseLedgers((current) => ({
@@ -549,6 +562,11 @@ export default function App() {
                 onPurchaseDiscountChange={updatePurchaseDiscount}
                 onRecord={recordCheckpointDay}
                 onReset={resetCheckpointStage}
+              />
+              <PayoutPlan
+                checkpoint={phaseCheckpoint}
+                values={payoutPlanValues}
+                onChange={updatePayoutPlan}
               />
               <ActiveStrategyBar profile={activeStrategy} />
               <div className={`workspace ${mobileAdvancedOpen ? 'advanced-open' : ''}`}>

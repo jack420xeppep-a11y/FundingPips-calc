@@ -9,6 +9,7 @@ const readUi = async () => {
     './components/PositionControls.jsx',
     './components/PhaseCheckpoint.jsx',
     './components/PhaseHistory.jsx',
+    './components/PayoutPlan.jsx',
     './components/ActiveStrategyBar.jsx',
     './components/IntelligencePanel.jsx',
     './components/IntelligenceStrip.jsx',
@@ -110,6 +111,26 @@ test('funded payout defaults to the recommended 8% break-even target', async () 
   const app = await read('./App.jsx');
 
   assert.match(app, /fundedPayout:\s*8/);
+});
+
+test('experimental payout plan exposes three targets, eligibility, and 25K guards', async () => {
+  const app = await read('./App.jsx');
+  const payoutPlan = await read('./components/PayoutPlan.jsx');
+  const checkpoint = await read('./components/PhaseCheckpoint.jsx');
+
+  assert.match(app, /<PayoutPlan/);
+  assert.match(app, /desiredNetProfit/);
+  assert.match(app, /firstMasterTradeDate/);
+  assert.match(payoutPlan, /План выплаты/);
+  assert.match(payoutPlan, /TP нуля/);
+  assert.match(payoutPlan, /TP желаемой прибыли/);
+  assert.match(payoutPlan, /TP ставить/);
+  assert.match(payoutPlan, /Дата выплаты/);
+  assert.match(payoutPlan, /Прибыльные дни/);
+  assert.match(payoutPlan, /Profit Concentration/);
+  assert.match(payoutPlan, /Striking/);
+  assert.match(payoutPlan, /Equity/);
+  assert.match(checkpoint, /Факт TP Bybit/);
 });
 
 test('visual system has platform identity, a lighter dark theme, and mobile rules', async () => {

@@ -30,6 +30,14 @@ export const PROFIT_SPLIT_OPTIONS = Object.freeze({
   ]),
 });
 
+const normalizeProfitSplit = (model, profitSplit) => {
+  const options = PROFIT_SPLIT_OPTIONS[model] ?? PROFIT_SPLIT_OPTIONS.standard;
+  const requested = Number(profitSplit);
+  return options.some((option) => option.value === requested)
+    ? requested
+    : modelRules(model).defaultProfitSplit;
+};
+
 const STAGES = Object.freeze(['p1', 'p2', 'funded']);
 const MAX_DAY_COUNT = 4;
 const FUNDED_TP_STEP = 100;
@@ -137,7 +145,7 @@ export function getPropRules({
   const rules = modelRules(model);
   const size = Math.max(0, Number(accountSize) || 0);
   const normalizedStage = STAGES.includes(stage) ? stage : 'p1';
-  const split = Number(profitSplit) || rules.defaultProfitSplit;
+  const split = normalizeProfitSplit(model, profitSplit);
   const targetPct = normalizedStage === 'p1'
     ? rules.p1Target
     : normalizedStage === 'p2'
@@ -146,7 +154,7 @@ export function getPropRules({
   const evaluation = normalizedStage !== 'funded';
   const lossPlanPct = evaluation
     ? [...EVALUATION_LOSS_PLANS[model]]
-    : Array.from({ length: 3 }, () => rules.dailyLossLimit);
+    : Array.from({ length: MAX_DAY_COUNT }, () => rules.dailyLossLimit);
   const concentrationThreshold = evaluation && size >= 25_000
     ? round(size * targetPct * 0.006)
     : null;
@@ -164,6 +172,7 @@ export function getPropRules({
     accountSize: size,
     stage: normalizedStage,
     evaluation,
+    profitSplit: split,
     targetPct,
     targetAmount: round(size * targetPct / 100),
     dailyLossPct: rules.dailyLossLimit,
@@ -218,6 +227,9 @@ export function calculatePhaseCheckpoint({
   bybitLoss = 0,
   challengeCost = 0,
   purchaseDiscountPct = 0,
+  desiredNetProfit = 0,
+  firstMasterTradeDate = '',
+  now = Date.now(),
 } = {}) {
   const rules = getPropRules({
     accountModel,
@@ -358,10 +370,7 @@ export function calculatePhaseCheckpoint({
     Math.max(0, Number(purchaseDiscountPct) || 0),
   ));
   const propCost = round(propBaseCost * (1 - normalizedPurchaseDiscountPct / 100));
-  const normalizedProfitSplit = Math.max(
-    0,
-    Number(profitSplit) || modelRules(rules.accountModel).defaultProfitSplit,
-  );
+  const normalizedProfitSplit = rules.profitSplit;
   const rewardGross = rules.stage === 'funded' ? Math.max(0, realizedPnl) : 0;
   const rewardAfterSplit = round(rewardGross * normalizedProfitSplit);
   const referenceBybitTpPnl = getSchemeBybitPnl({
@@ -381,13 +390,33 @@ export function calculatePhaseCheckpoint({
         normalizedProfitSplit - previousPnl,
     ))
     : null;
+  const normalizedDesiredNetProfit = round(Math.max(0, Number(desiredNetProfit) || 0));
+  const desiredNetTpAmount = rules.stage === 'funded' && normalizedProfitSplit > 0
+    ? round(Math.max(
+      0,
+      (propCost + normalizedDesiredNetProfit - bybitPnlBeforeSelectedDay + projectedBybitLoss) /
+        normalizedProfitSplit - previousPnl,
+    ))
+    : null;
+  const minimumRewardPct = rules.accountModel === 'standard' && normalizedProfitSplit === 0.9
+    ? 2
+    : 1;
+  const minimumRewardAmount = round(size * minimumRewardPct / 100);
+  const minimumRewardGrossAmount = normalizedProfitSplit > 0
+    ? round(minimumRewardAmount / normalizedProfitSplit)
+    : null;
+  const minimumRewardTpAmount = rules.stage === 'funded'
+    ? round(Math.max(0, (minimumRewardGrossAmount ?? 0) - previousPnl))
+    : null;
   const rawRecommendedFarmTpAmount = Math.max(
     recommendedTpAmount,
-    farmBreakEvenTpAmount ?? 0,
+    desiredNetTpAmount ?? farmBreakEvenTpAmount ?? 0,
+    minimumRewardTpAmount ?? 0,
   );
-  const recommendedFarmTpAmount = rules.stage === 'funded'
+  const payoutReadyTpAmount = rules.stage === 'funded'
     ? round(Math.ceil(rawRecommendedFarmTpAmount / FUNDED_TP_STEP) * FUNDED_TP_STEP)
-    : round(recommendedTpAmount);
+    : null;
+  const recommendedFarmTpAmount = payoutReadyTpAmount ?? round(recommendedTpAmount);
   const projectedRewardAfterSplit = rules.stage === 'funded'
     ? Math.max(0, previousPnl + recommendedFarmTpAmount) * normalizedProfitSplit
     : 0;
@@ -398,6 +427,65 @@ export function calculatePhaseCheckpoint({
     )
     : null;
   const netCashResult = round(bybitPnl + rewardAfterSplit - propCost);
+  const evaluationConcentrationTriggered = size >= 25_000 && ['p1', 'p2'].some(
+    (evaluationStage) => {
+      const evaluationRules = getPropRules({
+        accountModel: rules.accountModel,
+        accountSize: size,
+        stage: evaluationStage,
+        profitSplit: normalizedProfitSplit,
+        fundedPayout,
+      });
+      return getStageEntries(evaluationStage).some((entry) => (
+        entry.outcome === 'tp' && entry.amount > evaluationRules.concentrationThreshold
+      ));
+    },
+  );
+  const fundedProfitableDays = getStageEntries('funded').filter((entry) => (
+    entry.outcome === 'tp' && entry.amount >= rules.profitableDayAmount
+  )).length;
+  const cycleProfitableDaysRequired = rules.accountModel === 'flex' &&
+    normalizedProfitSplit === 0.95 ? 3 : 0;
+  const payoutProfitableDaysRequired = rules.stage === 'funded'
+    ? Math.max(cycleProfitableDaysRequired, evaluationConcentrationTriggered ? 4 : 0)
+    : 0;
+  const payoutProfitableDaysCompleted = rules.stage === 'funded'
+    ? Math.min(payoutProfitableDaysRequired || fundedProfitableDays, fundedProfitableDays)
+    : 0;
+  const payoutProfitableDaysRemaining = Math.max(
+    0,
+    payoutProfitableDaysRequired - payoutProfitableDaysCompleted,
+  );
+  const rewardCycleDays = rules.accountModel === 'flex'
+    ? 14
+    : normalizedProfitSplit === 0.6
+      ? 7
+      : normalizedProfitSplit === 0.8
+        ? 14
+        : normalizedProfitSplit === 1
+          ? 30
+          : 0;
+  const parsedFirstTrade = /^\d{4}-\d{2}-\d{2}$/.test(firstMasterTradeDate)
+    ? Date.parse(`${firstMasterTradeDate}T00:00:00Z`)
+    : Number.NaN;
+  const payoutAvailableAt = Number.isFinite(parsedFirstTrade) && rewardCycleDays > 0
+    ? parsedFirstTrade + rewardCycleDays * 24 * 60 * 60 * 1_000
+    : null;
+  const payoutAvailableDate = payoutAvailableAt === null
+    ? null
+    : new Date(payoutAvailableAt).toISOString().slice(0, 10);
+  const payoutTimeReady = rewardCycleDays === 0
+    ? rules.accountModel === 'standard' && normalizedProfitSplit === 0.9
+    : payoutAvailableAt !== null && Number(now) >= payoutAvailableAt;
+  const projectedRewardAmount = rules.stage === 'funded'
+    ? round(Math.max(0, previousPnl + recommendedFarmTpAmount) * normalizedProfitSplit)
+    : 0;
+  const payoutAmountReady = projectedRewardAmount >= minimumRewardAmount;
+  const strikingThresholdPct = rules.accountModel === 'standard' &&
+    rules.stage === 'funded' && rules.targetPct === 8 && size > 25_000 ? 1.2 : null;
+  const strikingThresholdAmount = strikingThresholdPct === null
+    ? null
+    : round(size * strikingThresholdPct / 100);
 
   let status = 'tracking';
   if (dailyBreach || maxLossBreach) status = 'breached';
@@ -438,8 +526,26 @@ export function calculatePhaseCheckpoint({
     rewardAfterSplit,
     projectedBybitLoss,
     farmBreakEvenTpAmount,
+    desiredNetProfit: normalizedDesiredNetProfit,
+    desiredNetTpAmount,
+    minimumRewardPct,
+    minimumRewardAmount,
+    minimumRewardGrossAmount,
+    minimumRewardTpAmount,
+    payoutReadyTpAmount,
     recommendedFarmTpAmount,
     projectedFarmNetAtRecommendedTp,
+    projectedRewardAmount,
+    payoutAmountReady,
+    rewardCycleDays,
+    payoutAvailableDate,
+    payoutTimeReady,
+    evaluationConcentrationTriggered,
+    payoutProfitableDaysRequired,
+    payoutProfitableDaysCompleted,
+    payoutProfitableDaysRemaining,
+    strikingThresholdPct,
+    strikingThresholdAmount,
     netCashResult,
     status,
   };

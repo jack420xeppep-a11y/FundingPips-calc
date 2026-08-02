@@ -184,7 +184,9 @@ export default function PhaseCheckpoint({
           />
           <Field
             id="bybitOutcome"
-            label="Что случилось на Bybit"
+            label={draft.outcome === 'sl'
+              ? 'Что было на Bybit после SL FP'
+              : 'Что случилось на Bybit'}
             value={draft.bybitOutcome}
             onChange={(_field, value) => setDraft((current) => ({
               ...current,
@@ -200,7 +202,9 @@ export default function PhaseCheckpoint({
           />
           <Field
             id="bybitAmount"
-            label="Итог Bybit, $"
+            label={draft.outcome === 'sl' && draft.bybitOutcome === 'tp'
+              ? 'Факт TP Bybit, $'
+              : draft.bybitOutcome === 'sl' ? 'Факт SL Bybit, $' : 'Итог Bybit, $'}
             value={draft.bybitAmount}
             onChange={(_field, value) => setDraft((current) => ({
               ...current,
@@ -210,7 +214,7 @@ export default function PhaseCheckpoint({
             step="1"
             min="0"
             readOnly={draft.bybitOutcome === 'none'}
-            hint="Фактически закрытый результат"
+            hint="Фактически закрытый результат после комиссий"
           />
           <Field
             id="challengeCost"

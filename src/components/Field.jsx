@@ -39,7 +39,7 @@ export default function Field({
           type={type}
           value={value}
           onChange={handleChange}
-          inputMode="decimal"
+          inputMode={type === 'number' ? 'decimal' : undefined}
           step={step}
           min={min}
           max={max}
